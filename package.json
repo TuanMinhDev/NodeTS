@@ -1,0 +1,10 @@
+{
+  "name": "nodets",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon --watch . --ext tsx,ts,json --exec ts-node index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  }
+}
