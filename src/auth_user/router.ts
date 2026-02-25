@@ -4,6 +4,9 @@ import { getMe, updateInfoUser, getAllUser, deleteUser } from "./controller/user
 import { checkPermission } from "./middleware/index";
 const userRouter = express.Router();
 
+
+
+
 userRouter.post("/register", register);
 userRouter.post("/login", login);
 userRouter.get("/me", checkPermission(["admin", "seller", "user"]), getMe);
