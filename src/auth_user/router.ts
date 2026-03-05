@@ -9,10 +9,10 @@ const userRouter = express.Router();
 
 userRouter.post("/register", register);
 userRouter.post("/login", login);
-userRouter.get("/me", checkPermission(["admin", "seller", "user"]), getMe);
-userRouter.put("/update-info", checkPermission(["admin", "seller", "user"]), updateInfoUser);
+userRouter.get("/me", checkPermission(["admin", "user"]), getMe);
+userRouter.put("/update-info", checkPermission(["admin", "user"]), updateInfoUser);
 userRouter.get("/all", checkPermission(["admin"]), getAllUser);
 userRouter.delete("/delete/:id", checkPermission(["admin"]), deleteUser);
-userRouter.post("/change-password", checkPermission(["admin", "seller", "user"]), changePassword);
+userRouter.post("/change-password", checkPermission(["admin", "user"]), changePassword);
 userRouter.post("/refresh-token", refreshToken);
 export default userRouter;

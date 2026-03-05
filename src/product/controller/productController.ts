@@ -10,14 +10,13 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-
-const uploadToCloudinary = (file: MulterFileLike): Promise<any> => {
+const uploadToCloudinary = (file: MulterFileLike): Promise<string> => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             { folder: "products" },
             (error, result) => {
-                if (error) return reject(error);
-                resolve(result);
+                if (error || !result) return reject(error);
+                resolve(result.secure_url);
             }
         );
         uploadStream.end(file.buffer);
@@ -25,163 +24,248 @@ const uploadToCloudinary = (file: MulterFileLike): Promise<any> => {
 };
 
 export const createProduct = async (req: Request, res: Response) => {
-    const authReq = req as any; // Cast để lấy user từ middleware
     try {
-       
+        const { name, description, category, sale, variants } = req.body;
 
-        const { name, description, attributes } = req.body;
-        const sellerId = authReq.user?.userId;
-
-        if (!sellerId) {
-            return res.status(401).json({ message: "Unauthorized: Missing seller information" });
+        // Parse variants if it's a string (from form-data)
+        let parsedVariants = variants;
+        if (typeof variants === 'string') {
+            try {
+                parsedVariants = JSON.parse(variants);
+            } catch (error) {
+                return res.status(400).json({ message: "variants phải là JSON hợp lệ" });
+            }
         }
 
-        const parsedAttributes = typeof attributes === "string" ? JSON.parse(attributes) : attributes;
+        if (!name || !description || !category || !parsedVariants) {
+            return res.status(400).json({ message: "Thiếu thông tin sản phẩm bắt buộc (name, description, category, variants)" });
+        }
 
-        // Ép kiểu req.files để tránh lỗi TS
+        console.log("Received variants:", parsedVariants);
+        console.log("Type of variants:", typeof parsedVariants);
+        console.log("Is array?:", Array.isArray(parsedVariants));
+
+        if (!Array.isArray(parsedVariants) || parsedVariants.length === 0) {
+            return res.status(400).json({ message: "variants phải là mảng và không được rỗng" });
+        }
+
+        // Validate variants structure
+        for (const variant of parsedVariants) {
+            if (!variant.color || !variant.size || variant.stock === undefined || variant.sold === undefined || variant.price === undefined) {
+                return res.status(400).json({ message: "Mỗi variant phải có color, size, stock, sold, price" });
+            }
+            if (typeof variant.stock !== 'number' || variant.stock < 0) {
+                return res.status(400).json({ message: "stock phải là số >= 0" });
+            }
+            if (typeof variant.sold !== 'number' || variant.sold < 0) {
+                return res.status(400).json({ message: "sold phải là số >= 0" });
+            }
+            if (typeof variant.price !== 'number' || variant.price <= 0) {
+                return res.status(400).json({ message: "price phải là số > 0" });
+            }
+        }
+
+        // Upload tất cả ảnh song song
         const files = ((req as any).files as MulterFileLike[]) ?? [];
-        
-        if (files.length > 0) {
-            const uploadPromises = files.map((file, index) => {
-                if (parsedAttributes[index]) {
-                    return uploadToCloudinary(file)
-                        .then((result: any) => {
-                            parsedAttributes[index].image = result.secure_url;
-                        });
-                }
-                return Promise.resolve();
-            });
-
-            await Promise.all(uploadPromises);
-        }
-
-        // Kiểm tra xem tất cả các attribute đã có image chưa (vì Model yêu cầu image: required)
-        const missingImage = parsedAttributes.some((attr: any) => !attr.image);
-        if (missingImage) {
-            return res.status(400).json({ message: "All product attributes must have an image. Make sure the number of images matches the number of attributes." });
-        }
+        const imageUrls: string[] = await Promise.all(files.map(uploadToCloudinary));
 
         const newProduct = new Product({
             name,
             description,
-            sellerId,
-            attributes: parsedAttributes
+            category,
+            sale: sale !== undefined ? Number(sale) : null,
+            variants: parsedVariants.map((v: any) => ({
+                color: v.color,
+                size: v.size,
+                stock: Number(v.stock),
+                sold: Number(v.sold),
+                price: Number(v.price)
+            })),
+            images: imageUrls,
         });
 
         await newProduct.save();
-        res.status(201).json({ message: "Product created successfully", product: newProduct });
+        return res.status(201).json({ message: "Tạo sản phẩm thành công", product: newProduct });
     } catch (error: any) {
-        res.status(500).json({ message: error.message });
+        return res.status(500).json({ message: error.message });
     }
 };
 
+
 export const getProduct = async (req: Request, res: Response) => {
     try {
-        const { name, minPrice, maxPrice, sellerId } = req.query;
+        const { name, category, minPrice, maxPrice, onSale, color, size, pageNumber, pageSize } = req.query;
 
         const filter: any = {};
 
         if (name) {
-            filter.name = { $regex: name, $options: "i" }; // Tìm kiếm theo tên không phân biệt hoa thường
+            filter.name = { $regex: name, $options: "i" };
         }
 
-        if (sellerId) {
-            filter.sellerId = sellerId;
+        if (category) {
+            filter.category = { $regex: category, $options: "i" };
         }
 
-        // Filter theo giá (nằm trong mảng attributes)
+        // Filter by variants price range
         if (minPrice || maxPrice) {
-            filter["attributes.price"] = {};
-            if (minPrice) filter["attributes.price"].$gte = Number(minPrice);
-            if (maxPrice) filter["attributes.price"].$lte = Number(maxPrice);
+            const priceFilter: any = {};
+            if (minPrice) priceFilter.$gte = Number(minPrice);
+            if (maxPrice) priceFilter.$lte = Number(maxPrice);
+            filter["variants.price"] = priceFilter;
         }
 
-        const products = await Product.find(filter).populate("sellerId", "name email");
-        
-        res.status(200).json({
+        // Filter by variants color
+        if (color) {
+            filter["variants.color"] = { $regex: color, $options: "i" };
+        }
+
+        // Filter by variants size
+        if (size) {
+            filter["variants.size"] = { $regex: size, $options: "i" };
+        }
+
+        // Lọc sản phẩm đang sale
+        if (onSale === "true") {
+            filter.sale = { $ne: null };
+        }
+
+        // Phân trang
+        const page = Number(pageNumber) || 1;
+        const limit = Number(pageSize) || 10;
+        const skip = (page - 1) * limit;
+
+        const products = await Product.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const total = await Product.countDocuments(filter);
+
+        return res.status(200).json({
             count: products.length,
-            products
+            total,
+            page,
+            pageSize: limit,
+            totalPages: Math.ceil(total / limit),
+            products,
         });
     } catch (error: any) {
-        res.status(500).json({ message: error.message });
+        return res.status(500).json({ message: error.message });
     }
 };
 
-
 export const updateProduct = async (req: Request, res: Response) => {
-    const authReq = req as any;
     try {
         const { id } = req.params;
-        const { name, description, attributes } = req.body;
-        const userId = authReq.user?.userId;
+        const { name, description, category, sale, variants } = req.body;
+
+        // Parse variants if it's a string (from form-data)
+        let parsedVariants = variants;
+        if (typeof variants === 'string') {
+            try {
+                parsedVariants = JSON.parse(variants);
+            } catch (error) {
+                return res.status(400).json({ message: "variants phải là JSON hợp lệ" });
+            }
+        }
 
         const product = await Product.findById(id);
         if (!product) {
-            return res.status(404).json({ message: "Product not found" });
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
         }
 
-        // Kiểm tra quyền sở hữu
-        if (product.sellerId.toString() !== userId && authReq.user?.role !== "admin") {
-            return res.status(403).json({ message: "You do not have permission to update this product" });
-        }
+        // Validate variants if provided
+        if (parsedVariants !== undefined) {
+            if (!Array.isArray(parsedVariants) || parsedVariants.length === 0) {
+                return res.status(400).json({ message: "variants phải là mảng và không được rỗng" });
+            }
 
-        let updatedAttributes = attributes;
-        if (typeof attributes === "string") {
-            updatedAttributes = JSON.parse(attributes);
-        }
-
-        // Xử lý upload ảnh mới nếu có (tương tự create)
-        const files = ((req as any).files as MulterFileLike[]) ?? [];
-
-        if (files.length > 0 && updatedAttributes) {
-            const uploadPromises = files.map((file, index) => {
-                if (updatedAttributes[index]) {
-                    return uploadToCloudinary(file)
-                        .then((result: any) => {
-                            updatedAttributes[index].image = result.secure_url;
-                        });
+            for (const variant of parsedVariants) {
+                if (!variant.color || !variant.size || variant.stock === undefined || variant.sold === undefined || variant.price === undefined) {
+                    return res.status(400).json({ message: "Mỗi variant phải có color, size, stock, sold, price" });
                 }
-                return Promise.resolve();
-            });
-            await Promise.all(uploadPromises);
+                if (typeof variant.stock !== 'number' || variant.stock < 0) {
+                    return res.status(400).json({ message: "stock phải là số >= 0" });
+                }
+                if (typeof variant.sold !== 'number' || variant.sold < 0) {
+                    return res.status(400).json({ message: "sold phải là số >= 0" });
+                }
+                if (typeof variant.price !== 'number' || variant.price <= 0) {
+                    return res.status(400).json({ message: "price phải là số > 0" });
+                }
+            }
+        }
+
+        // Upload ảnh mới nếu có rồi ghép với ảnh cũ
+        const files = ((req as any).files as MulterFileLike[]) ?? [];
+        let updatedImages = product.images ?? [];
+        if (files.length > 0) {
+            const newUrls = await Promise.all(files.map(uploadToCloudinary));
+            updatedImages = [...updatedImages, ...newUrls];
+        }
+
+        // Hỗ trợ xoá ảnh cụ thể: truyền removeImages = ["url1", "url2"]
+        const { removeImages } = req.body;
+        if (removeImages) {
+            const toRemove: string[] = typeof removeImages === "string" ? JSON.parse(removeImages) : removeImages;
+            updatedImages = updatedImages.filter((img: string) => !toRemove.includes(img));
+        }
+
+        const updateData: any = {
+            name: name ?? product.name,
+            description: description ?? product.description,
+            category: category ?? product.category,
+            sale: sale !== undefined ? (sale === "null" || sale === null ? null : Number(sale)) : product.sale,
+            images: updatedImages,
+        };
+
+        if (parsedVariants !== undefined) {
+            updateData.variants = parsedVariants.map((v: any) => ({
+                color: v.color,
+                size: v.size,
+                stock: Number(v.stock),
+                sold: Number(v.sold),
+                price: Number(v.price)
+            }));
         }
 
         const updatedProduct = await Product.findByIdAndUpdate(
             id,
-            {
-                name: name || product.name,
-                description: description || product.description,
-                attributes: updatedAttributes || product.attributes,
-            },
+            updateData,
             { new: true }
         );
 
-        res.status(200).json({ message: "Product updated successfully", product: updatedProduct });
+        return res.status(200).json({ message: "Cập nhật sản phẩm thành công", product: updatedProduct });
     } catch (error: any) {
-        res.status(500).json({ message: error.message });
+        return res.status(500).json({ message: error.message });
     }
 };
 
-export const deleteProduct = async (req: Request, res: Response) => {
-    const authReq = req as any;
+export const getProductById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = authReq.user?.userId;
 
         const product = await Product.findById(id);
         if (!product) {
-            return res.status(404).json({ message: "Product not found" });
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
         }
 
-        // Kiểm tra quyền sở hữu
-        if (product.sellerId.toString() !== userId && authReq.user?.role !== "admin") {
-            return res.status(403).json({ message: "You do not have permission to delete this product" });
-        }
-
-        await Product.findByIdAndDelete(id);
-
-        res.status(200).json({ message: "Product deleted successfully" });
+        return res.status(200).json({ product });
     } catch (error: any) {
-        res.status(500).json({ message: error.message });
+        return res.status(500).json({ message: error.message });
+    }
+};
+export const deleteProduct = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        const product = await Product.findByIdAndDelete(id);
+        if (!product) {
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+        }
+
+        return res.status(200).json({ message: "Xóa sản phẩm thành công" });
+    } catch (error: any) {
+        return res.status(500).json({ message: error.message });
     }
 };

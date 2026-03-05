@@ -1,7 +1,12 @@
 import mongoose from "mongoose";
 
-const cartSchema = new mongoose.Schema({
+const orderSchema = new mongoose.Schema({
     userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+    sellerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true,
@@ -32,13 +37,19 @@ const cartSchema = new mongoose.Schema({
         default: 0,
     },
     status: {
-        type: String,
-        enum: ["active", "inactive"],
-        default: "active",
+        type: Number,
+        enum: [0,1,2,3,4,5],
+        // 0: từ chối
+        // 1: chờ xác nhận
+        // 2: đang chuẩn bị hàng
+        // 3: đang giao hàng
+        // 4: giao thành công
+        // 5: trả hàng
+        default: 1,
     },
 },
     { timestamps: true });
 
-const Cart = mongoose.model("Cart", cartSchema);
+const Order = mongoose.model("Order", orderSchema);
 
-export default Cart;
+export default Order;

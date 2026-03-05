@@ -5,11 +5,11 @@ import { createCart, deleteProductCart, getCart, updateQuantityProductCart } fro
 
 const cartRouter = express.Router();
 
-cartRouter.post("/create", checkPermission(["admin", "seller", 'user']), createCart);
-cartRouter.get("/get", checkPermission(["admin", "seller", 'user']), getCart);
+cartRouter.post("/create", checkPermission(["admin", "user"]), createCart);
+cartRouter.get("/get", checkPermission(["admin", "user"]), getCart);
 
-cartRouter.delete("/delete", checkPermission(["admin", "seller", 'user']), deleteProductCart);
-cartRouter.put("/update/:id", checkPermission(["admin", "seller", 'user']), updateQuantityProductCart);
+cartRouter.delete("/delete", checkPermission(["admin", "user"]), deleteProductCart);
+cartRouter.put("/update/:id", checkPermission(["admin", "user"]), updateQuantityProductCart);
 
 export default cartRouter;
 
