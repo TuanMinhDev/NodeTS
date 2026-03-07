@@ -6,47 +6,36 @@ const orderSchema = new mongoose.Schema({
         ref: "User",
         required: true,
     },
-    sellerId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-    },
-    items: [{
+    
+    products: [{
         productId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Product",
             required: true,
         },
-        variant: {
-            color: { type: String, required: true },
-            size: { type: String, required: true },
-        },
+        size: { type: String, required: true },
+        color: { type: String, required: true },
         quantity: {
             type: Number,
             required: true,
             min: 1,
         },
-        price: {
-            type: Number,
-            required: true,
-        },
     }],
+    user: {
+        name: { type: String, required: true },
+        phone: { type: String, required: true },
+        address: { type: String, required: true },
+    },
+    description: {
+        type: String,
+        default: "",
+    },
     totalPrice: {
         type: Number,
         required: true,
         default: 0,
     },
-    status: {
-        type: Number,
-        enum: [0,1,2,3,4,5],
-        // 0: từ chối
-        // 1: chờ xác nhận
-        // 2: đang chuẩn bị hàng
-        // 3: đang giao hàng
-        // 4: giao thành công
-        // 5: trả hàng
-        default: 1,
-    },
+    
 },
     { timestamps: true });
 

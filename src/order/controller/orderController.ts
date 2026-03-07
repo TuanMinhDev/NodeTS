@@ -1,50 +1,51 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import Order from "../model/orderModel";
+import User from "../../auth_user/model/userModel";
 
 export const createOrder = async (req: Request, res: Response) => {
     try {
-        const { userId, sellerId, items } = req.body;
+        const { products, user, description } = req.body;
+        const userId = (req as any).user?.userId;
         
-        if (!userId || !sellerId || !items) {
+        if (!userId || !products || !user) {
              res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
              return;
         }
 
-        if (!Array.isArray(items) || items.length === 0) {
-            res.status(400).json({ message: "items phải là mảng và không được rỗng" });
+        if (!Array.isArray(products) || products.length === 0) {
+            res.status(400).json({ message: "products phải là mảng và không được rỗng" });
             return;
         }
 
-        // Validate items structure
-        for (const item of items) {
-            if (!item.productId || !item.variant || !item.variant.color || !item.variant.size) {
-                res.status(400).json({ message: "Mỗi item phải có productId, variant.color, variant.size" });
+        // Validate products structure
+        for (const product of products) {
+            if (!product.productId || !product.color || !product.size) {
+                res.status(400).json({ message: "Mỗi product phải có productId, color, size" });
                 return;
             }
-            if (!mongoose.Types.ObjectId.isValid(item.productId)) {
-                res.status(400).json({ message: `productId không hợp lệ: ${item.productId}` });
+            if (!mongoose.Types.ObjectId.isValid(product.productId)) {
+                res.status(400).json({ message: `productId không hợp lệ: ${product.productId}` });
                 return;
             }
-            if (typeof item.quantity !== "number" || item.quantity <= 0) {
+            if (typeof product.quantity !== "number" || product.quantity <= 0) {
                 res.status(400).json({ message: "quantity phải là số > 0" });
-                return;
-            }
-            if (typeof item.price !== "number" || item.price <= 0) {
-                res.status(400).json({ message: "price phải là số > 0" });
                 return;
             }
         }
 
-        // Calculate total price
-        const totalPrice = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        // Validate user info
+        if (!user.name || !user.phone || !user.address) {
+            res.status(400).json({ message: "User phải có name, phone, address" });
+            return;
+        }
 
         const newOrder = new Order({
             userId,
-            sellerId,
-            items,
-            totalPrice,
-            status: 1, // Mặc định là chờ xác nhận
+            products,
+            user,
+            description: description || "",
+            totalPrice: 0,
         });
 
         const savedOrder = await newOrder.save();
@@ -56,18 +57,19 @@ export const createOrder = async (req: Request, res: Response) => {
 
 export const getOrder = async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
-        const order = await Order.findById(id)
-            .populate("userId", "username email")
-            .populate("sellerId", "username email")
-            .populate("items.productId");
-
-        if (!order) {
-             res.status(404).json({ message: "Không tìm thấy đơn hàng" });
-             return;
+        const userId = (req as any).user?.userId;
+        
+        if (!userId) {
+            res.status(401).json({ message: "Không tìm thấy thông tin người dùng" });
+            return;
         }
 
-        res.status(200).json(order);
+        const orders = await Order.find({ userId })
+            .populate("userId", "username email")
+            .populate("products.productId")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(orders);
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
@@ -78,24 +80,9 @@ export const updateStatusOrder = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { status } = req.body;
 
-        // Kiểm tra status có hợp lệ trong enum [0,1,2,3,4,5] không
-        if (![0, 1, 2, 3, 4, 5].includes(status)) {
-             res.status(400).json({ message: "Trạng thái không hợp lệ" });
-             return;
-        }
-
-        const updatedOrder = await Order.findByIdAndUpdate(
-            id,
-            { status },
-            { new: true }
-        );
-
-        if (!updatedOrder) {
-             res.status(404).json({ message: "Không tìm thấy đơn hàng" });
-             return;
-        }
-
-        res.status(200).json(updatedOrder);
+        // Status field has been removed from model
+        res.status(400).json({ message: "Tính năng cập nhật trạng thái đã bị vô hiệu hóa" });
+        return;
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }

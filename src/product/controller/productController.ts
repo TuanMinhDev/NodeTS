@@ -95,6 +95,7 @@ export const createProduct = async (req: Request, res: Response) => {
 export const getProduct = async (req: Request, res: Response) => {
     try {
         const { name, category, minPrice, maxPrice, onSale, color, size, pageNumber, pageSize } = req.query;
+        console.log("Query params:", { name, category, minPrice, maxPrice, onSale, color, size, pageNumber, pageSize });
 
         const filter: any = {};
 

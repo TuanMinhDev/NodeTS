@@ -9,7 +9,7 @@ cartRouter.post("/create", checkPermission(["admin", "user"]), createCart);
 cartRouter.get("/get", checkPermission(["admin", "user"]), getCart);
 
 cartRouter.delete("/delete", checkPermission(["admin", "user"]), deleteProductCart);
-cartRouter.put("/update/:id", checkPermission(["admin", "user"]), updateQuantityProductCart);
+cartRouter.put("/update/:id/:itemId", checkPermission(["admin", "user"]), updateQuantityProductCart);
 
 export default cartRouter;
 

@@ -23,7 +23,29 @@ export const register = async (req: Request, res: Response) => {
         }
         const user = await userModel.create({ email, name, address: '', phoneNumber, role });
         await authModel.create({ user_name: email, password, userId: user._id });
-        res.status(201).json({ message: "Đăng ký thành công" });
+
+        if (!JWT_SECRET) {
+            return res.status(500).json({ message: "Lỗi hệ thống" });
+        }
+
+        const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
+
+        res.setHeader(
+            "Set-Cookie",
+            `access_token=${token}; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax`
+        );
+
+        res.status(201).json({ 
+            message: "Đăng ký thành công",
+            token: token,
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                phoneNumber: user.phoneNumber,
+                role: user.role
+            }
+        });
     } catch (error) {
         return res.status(500).json({ message: "Lỗi server", error: error });
     }
