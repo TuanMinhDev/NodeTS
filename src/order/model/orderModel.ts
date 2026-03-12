@@ -11,6 +11,11 @@ const orderSchema = new mongoose.Schema({
         ref: "User",
         required: true,
     },
+    orderCode: {
+        type: String,
+        required: true,
+        unique: true,
+    },
     items: [{
         productId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -36,16 +41,32 @@ const orderSchema = new mongoose.Schema({
         required: true,
         default: 0,
     },
+    shippingAddress: {
+        fullName: { type: String, required: true },
+        phoneNumber: { type: String, required: true },
+        address: { type: String, required: true },
+        city: { type: String, required: true },
+        district: { type: String, required: true },
+        ward: { type: String, required: true },
+    },
     status: {
-        type: Number,
-        enum: [0,1,2,3,4,5],
-        // 0: từ chối
-        // 1: chờ xác nhận
-        // 2: đang chuẩn bị hàng
-        // 3: đang giao hàng
-        // 4: giao thành công
-        // 5: trả hàng
-        default: 1,
+        type: String,
+        enum: ["pending", "confirmed", "preparing", "shipping", "delivered", "cancelled", "returned"],
+        default: "pending",
+    },
+    paymentMethod: {
+        type: String,
+        enum: ["cod", "bank_transfer", "momo"],
+        required: true,
+    },
+    paymentStatus: {
+        type: String,
+        enum: ["pending", "paid", "failed"],
+        default: "pending",
+    },
+    notes: {
+        type: String,
+        trim: true,
     },
 },
     { timestamps: true });

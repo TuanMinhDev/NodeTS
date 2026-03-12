@@ -1,11 +1,11 @@
 import express from "express";
 import { checkPermission } from "../auth_user/middleware";
-import { createCart, deleteProductCart, getCart, updateQuantityProductCart } from "./controller/cartController";
+import { addToCart, deleteProductCart, getCart, updateQuantityProductCart } from "./controller/cartController";
 
 
 const cartRouter = express.Router();
 
-cartRouter.post("/create", checkPermission(["admin", "user"]), createCart);
+cartRouter.post("/add", checkPermission(["admin", "user", "seller"]), addToCart);
 cartRouter.get("/get", checkPermission(["admin", "user"]), getCart);
 
 cartRouter.delete("/delete", checkPermission(["admin", "user"]), deleteProductCart);

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Product from "../model/productModel";
 import { v2 as cloudinary } from "cloudinary";
+import { notifyProductCreated } from "../../notification/service/notificationService";
 
 type MulterFileLike = { buffer: Buffer; mimetype: string };
 
@@ -25,6 +26,9 @@ const uploadToCloudinary = (file: MulterFileLike): Promise<string> => {
 
 export const createProduct = async (req: Request, res: Response) => {
     try {
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
+
         const { name, description, category, sale, variants } = req.body;
 
         // Parse variants if it's a string (from form-data)
@@ -72,7 +76,8 @@ export const createProduct = async (req: Request, res: Response) => {
         const newProduct = new Product({
             name,
             description,
-            category,
+            categoryId: category,
+            sellerId: userId,
             sale: sale !== undefined ? Number(sale) : null,
             variants: parsedVariants.map((v: any) => ({
                 color: v.color,
@@ -85,6 +90,15 @@ export const createProduct = async (req: Request, res: Response) => {
         });
 
         await newProduct.save();
+
+        // Send notifications to followers and seller
+        try {
+            await notifyProductCreated(userId, newProduct._id.toString(), name);
+        } catch (notificationError) {
+            console.error("Error sending notifications:", notificationError);
+            // Don't fail the product creation if notification fails
+        }
+
         return res.status(201).json({ message: "Tạo sản phẩm thành công", product: newProduct });
     } catch (error: any) {
         return res.status(500).json({ message: error.message });
@@ -156,6 +170,9 @@ export const getProduct = async (req: Request, res: Response) => {
 
 export const updateProduct = async (req: Request, res: Response) => {
     try {
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
+
         const { id } = req.params;
         const { name, description, category, sale, variants } = req.body;
 
@@ -172,6 +189,11 @@ export const updateProduct = async (req: Request, res: Response) => {
         const product = await Product.findById(id);
         if (!product) {
             return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+        }
+
+        // Check if user is admin or the owner of the product
+        if ((req as any).user?.role !== "admin" && product.sellerId.toString() !== userId) {
+            return res.status(403).json({ message: "Bạn không có quyền sửa sản phẩm này" });
         }
 
         // Validate variants if provided
@@ -214,7 +236,7 @@ export const updateProduct = async (req: Request, res: Response) => {
         const updateData: any = {
             name: name ?? product.name,
             description: description ?? product.description,
-            category: category ?? product.category,
+            categoryId: category ?? product.categoryId,
             sale: sale !== undefined ? (sale === "null" || sale === null ? null : Number(sale)) : product.sale,
             images: updatedImages,
         };
@@ -255,15 +277,26 @@ export const getProductById = async (req: Request, res: Response) => {
         return res.status(500).json({ message: error.message });
     }
 };
+
 export const deleteProduct = async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-        const product = await Product.findByIdAndDelete(id);
-        if (!product) {
-            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+        const { id } = req.params;
+        const deletedProduct = await Product.findById(id);
+
+        if (!deletedProduct) {
+             return res.status(404).json({ message: "Không tìm thấy sản phẩm để xóa" });
+             return;
         }
 
+        // Check if user is admin or the owner of the product
+        if ((req as any).user?.role !== "admin" && deletedProduct.sellerId.toString() !== userId) {
+            return res.status(403).json({ message: "Bạn không có quyền xóa sản phẩm này" });
+        }
+
+        await Product.findByIdAndDelete(id);
         return res.status(200).json({ message: "Xóa sản phẩm thành công" });
     } catch (error: any) {
         return res.status(500).json({ message: error.message });

@@ -21,7 +21,7 @@ export const register = async (req: Request, res: Response) => {
         if (checkPhoneNumber) {
             return res.status(400).json({ message: "Số điện thoại đã tồn tại" });
         }
-        const user = await userModel.create({ email, name, address: '', phoneNumber, role });
+        const user = await userModel.create({ email, name, phoneNumber, role });
         await authModel.create({ user_name: email, password, userId: user._id });
         res.status(201).json({ message: "Đăng ký thành công" });
     } catch (error) {
