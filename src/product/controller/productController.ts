@@ -31,7 +31,6 @@ export const createProduct = async (req: Request, res: Response) => {
 
         const { name, description, category, sale, variants } = req.body;
 
-        // Parse variants if it's a string (from form-data)
         let parsedVariants = variants;
         if (typeof variants === 'string') {
             try {
@@ -45,15 +44,12 @@ export const createProduct = async (req: Request, res: Response) => {
             return res.status(400).json({ message: "Thiếu thông tin sản phẩm bắt buộc (name, description, category, variants)" });
         }
 
-        console.log("Received variants:", parsedVariants);
-        console.log("Type of variants:", typeof parsedVariants);
-        console.log("Is array?:", Array.isArray(parsedVariants));
+
 
         if (!Array.isArray(parsedVariants) || parsedVariants.length === 0) {
             return res.status(400).json({ message: "variants phải là mảng và không được rỗng" });
         }
 
-        // Validate variants structure
         for (const variant of parsedVariants) {
             if (!variant.color || !variant.size || variant.stock === undefined || variant.sold === undefined || variant.price === undefined) {
                 return res.status(400).json({ message: "Mỗi variant phải có color, size, stock, sold, price" });
@@ -91,12 +87,10 @@ export const createProduct = async (req: Request, res: Response) => {
 
         await newProduct.save();
 
-        // Send notifications to followers and seller
         try {
             await notifyProductCreated(userId, newProduct._id.toString(), name);
         } catch (notificationError) {
             console.error("Error sending notifications:", notificationError);
-            // Don't fail the product creation if notification fails
         }
 
         return res.status(201).json({ message: "Tạo sản phẩm thành công", product: newProduct });
@@ -108,7 +102,7 @@ export const createProduct = async (req: Request, res: Response) => {
 
 export const getProduct = async (req: Request, res: Response) => {
     try {
-        const { name, category, minPrice, maxPrice, onSale, color, size, pageNumber, pageSize } = req.query;
+        const { name, category, minPrice, maxPrice, onSale, color, size, pageNumber, pageSize, sellerId } = req.query;
 
         const filter: any = {};
 
@@ -120,7 +114,10 @@ export const getProduct = async (req: Request, res: Response) => {
             filter.category = { $regex: category, $options: "i" };
         }
 
-        // Filter by variants price range
+        if (sellerId) {
+            filter.sellerId = sellerId;
+        }
+
         if (minPrice || maxPrice) {
             const priceFilter: any = {};
             if (minPrice) priceFilter.$gte = Number(minPrice);
@@ -149,6 +146,7 @@ export const getProduct = async (req: Request, res: Response) => {
         const skip = (page - 1) * limit;
 
         const products = await Product.find(filter)
+            .populate("sellerId", "name email avatar")
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
@@ -156,12 +154,10 @@ export const getProduct = async (req: Request, res: Response) => {
         const total = await Product.countDocuments(filter);
 
         return res.status(200).json({
-            count: products.length,
-            total,
-            page,
-            pageSize: limit,
+            items: products,
+            totalItems: total,
             totalPages: Math.ceil(total / limit),
-            products,
+            currentPage: page,
         });
     } catch (error: any) {
         return res.status(500).json({ message: error.message });
@@ -267,12 +263,12 @@ export const getProductById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
 
-        const product = await Product.findById(id);
+        const product = await Product.findById(id).populate("sellerId", "name email avatar");
         if (!product) {
             return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
         }
 
-        return res.status(200).json({ product });
+        return res.status(200).json({ data: product });
     } catch (error: any) {
         return res.status(500).json({ message: error.message });
     }
@@ -287,8 +283,8 @@ export const deleteProduct = async (req: Request, res: Response) => {
         const deletedProduct = await Product.findById(id);
 
         if (!deletedProduct) {
-             return res.status(404).json({ message: "Không tìm thấy sản phẩm để xóa" });
-             return;
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm để xóa" });
+            return;
         }
 
         // Check if user is admin or the owner of the product

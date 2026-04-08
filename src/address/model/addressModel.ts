@@ -1,11 +1,6 @@
 import mongoose from "mongoose";
 
-const addressSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-    },
+const addressItemSchema = new mongoose.Schema({
     fullName: {
         type: String,
         required: true,
@@ -16,29 +11,28 @@ const addressSchema = new mongoose.Schema({
         required: true,
         trim: true,
     },
-    address: {
+    province: { type: String, required: true, trim: true },
+    district: { type: String, required: true, trim: true },
+    ward:     { type: String, required: true, trim: true },
+    street:   { type: String, trim: true },
+    isDefault: { type: Boolean, default: false },
+    type: {
         type: String,
-        required: true,
-        trim: true,
+        enum: ["home", "office", "warehouse"],
+        default: "home",
     },
-    city: {
-        type: String,
+}, { _id: true });
+
+const addressSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
         required: true,
-        trim: true,
+        unique: true,
     },
-    district: {
-        type: String,
-        required: true,
-        trim: true,
-    },
-    ward: {
-        type: String,
-        required: true,
-        trim: true,
-    },
-    isDefault: {
-        type: Boolean,
-        default: false,
+    addresses: {
+        type: [addressItemSchema],
+        default: [],
     },
 },
     { timestamps: true });

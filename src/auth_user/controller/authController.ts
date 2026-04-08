@@ -32,6 +32,7 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
     try {
         const { identifier, password } = req.body;
+        
 
         if (!identifier || !password) {
             return res.status(400).json({ message: "Chưa nhập đầy đủ dữ liệu" });

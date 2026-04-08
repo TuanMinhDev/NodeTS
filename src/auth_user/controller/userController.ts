@@ -66,7 +66,37 @@ export const updateInfoUser = async (req: AuthedRequest, res: Response) => {
 
 export const getAllUser = async (req: AuthedRequest, res: Response) => {
     try {
-        const users = await userModel.find();
+        const { name, role, search, keyword, q } = req.query;
+
+        const filter: any = {};
+
+        // Ưu tiên các query phổ biến trên FE: search / keyword / q / name
+        const rawSearch =
+            (typeof search === "string" && search) ||
+            (typeof keyword === "string" && keyword) ||
+            (typeof q === "string" && q) ||
+            (typeof name === "string" && name) ||
+            (Array.isArray(search) && search[0]) ||
+            (Array.isArray(keyword) && keyword[0]) ||
+            (Array.isArray(q) && q[0]) ||
+            (Array.isArray(name) && name[0]) ||
+            "";
+
+        const nameStr = String(rawSearch).trim();
+        if (nameStr) {
+            filter.name = { $regex: nameStr, $options: "i" };
+        }
+
+        const roleStr =
+            (typeof role === "string" && role) ||
+            (Array.isArray(role) && role[0]) ||
+            "";
+
+        if (roleStr) {
+            filter.role = roleStr;
+        }
+
+        const users = await userModel.find(filter);
         return res.status(200).json(users);
     }
     catch (error) {

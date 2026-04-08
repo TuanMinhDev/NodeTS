@@ -11,11 +11,9 @@ const server = createServer(app);
 
 connectDB();
 
-// Initialize Socket.IO
 const io = initializeSocketIO(server);
 initializeMessageSocket(io);
 
-// Cấu hình CORS
 app.use(cors({
   origin: "*", // Cho phép tất cả origins, hoặc thay bằng domain cụ thể như "http://localhost:5173"
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],

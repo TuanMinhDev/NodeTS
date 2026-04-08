@@ -5,8 +5,7 @@ dotenv.config();
 const connectDB = async () => {
   try {
     const PASSWORD = process.env.DB_PW;
-    const CLOUD_DB_COMPASS = `mongodb+srv://hotuanminh1802_db_user:${PASSWORD}@cluster0.ipf4kez.mongodb.net/`;
-    
+    const CLOUD_DB_COMPASS = `mongodb+srv://tuanminhho599:${PASSWORD}@cluster0.wqgngyg.mongodb.net/`;
 
     await mongoose.connect(CLOUD_DB_COMPASS, {});
     console.log("Connect Successful!");

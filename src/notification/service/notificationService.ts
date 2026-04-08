@@ -96,12 +96,11 @@ export const createNotification = async (notificationData: {
 
 export const notifyProductCreated = async (sellerId: string, productId: string, productName: string) => {
     try {
-        // Get all followers of this seller
-        const followers = await Follower.find({ sellerId }).populate("userId");
-        
-        // Notify all followers about new product
-        const notifications = followers.map(follower => ({
-            userId: follower.userId.toString(),
+        const doc = await Follower.findOne({ sellerId });
+        const followerEntries = doc?.followers ?? [];
+
+        const notifications = followerEntries.map((f) => ({
+            userId: f.userId.toString(),
             title: "Sản phẩm mới",
             content: `${productName} vừa được đăng bán bởi seller bạn theo dõi`,
             type: "product",
@@ -124,7 +123,7 @@ export const notifyProductCreated = async (sellerId: string, productId: string, 
             data: { productId, productName }
         });
 
-        console.log(`Notified ${followers.length} followers about new product: ${productName}`);
+        console.log(`Notified ${followerEntries.length} followers about new product: ${productName}`);
     } catch (error) {
         console.error("Error notifying product created:", error);
     }
@@ -165,14 +164,6 @@ export const notifyOrderStatusUpdated = async (buyerId: string, orderId: string,
         let title, content;
         
         switch (status) {
-            case "confirmed":
-                title = "Đơn hàng được xác nhận";
-                content = `Đơn hàng ${orderCode} đã được seller xác nhận`;
-                break;
-            case "preparing":
-                title = "Đơn hàng đang chuẩn bị";
-                content = `Đơn hàng ${orderCode} đang được chuẩn bị`;
-                break;
             case "shipping":
                 title = "Đơn hàng đang giao";
                 content = `Đơn hàng ${orderCode} đang được giao đến bạn`;

@@ -36,6 +36,16 @@ const orderSchema = new mongoose.Schema({
             required: true,
         },
     }],
+    shippingMethod: {
+        type: String,
+        enum: ["economy", "fast", "express"],
+        required: true,
+    },
+    shippingFee: {
+        type: Number,
+        required: true,
+        default: 0,
+    },
     totalPrice: {
         type: Number,
         required: true,
@@ -51,17 +61,7 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["pending", "confirmed", "preparing", "shipping", "delivered", "cancelled", "returned"],
-        default: "pending",
-    },
-    paymentMethod: {
-        type: String,
-        enum: ["cod", "bank_transfer", "momo"],
-        required: true,
-    },
-    paymentStatus: {
-        type: String,
-        enum: ["pending", "paid", "failed"],
+        enum: ["pending", "shipping", "delivered", "cancelled"],
         default: "pending",
     },
     notes: {

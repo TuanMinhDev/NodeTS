@@ -141,10 +141,23 @@ export const getCart = async (req: AuthedRequest, res: Response) => {
     const userId = req.user?.userId || req.user?.id;
     if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
+    const { pageNumber = 1, pageSize = 10 } = req.query;
+    const page = Number(pageNumber);
+    const limit = Number(pageSize);
+    const skip = (page - 1) * limit;
+
     const cart = await Cart.findOne({ userId }).populate("items.productId");
     if (!cart) return res.status(404).json({ message: "Không tìm thấy giỏ hàng" });
+    const paginatedItems = cart.items.slice(skip, skip + limit);
+    const totalItems = cart.items.length;
+    const totalPages = Math.ceil(totalItems / limit);
 
-    return res.status(200).json({ message: "Lấy giỏ hàng thành công", cart });
+    return res.status(200).json({
+      items: paginatedItems,
+      totalItems,
+      totalPages,
+      currentPage: page
+    });
   } catch (error: any) {
     return res.status(500).json({ message: error?.message || "Lỗi server" });
   }
@@ -160,6 +173,7 @@ export const deleteProductCart = async (req: AuthedRequest, res: Response) => {
     if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ message: "itemIds phải là mảng và không được rỗng" });
     }
+    console.log("itemIds:", itemIds);
 
     const cart = await Cart.findOne({ userId });
     if (!cart) return res.status(404).json({ message: "Không tìm thấy giỏ hàng" });
@@ -171,7 +185,6 @@ export const deleteProductCart = async (req: AuthedRequest, res: Response) => {
       return res.status(404).json({ message: "Các items không có trong giỏ hàng" });
     }
 
-    // Recalculate total price
     cart.totalPrice = cart.items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
     await cart.save();
     return res.status(200).json({ message: "Xóa sản phẩm khỏi giỏ hàng thành công", cart });
@@ -180,18 +193,15 @@ export const deleteProductCart = async (req: AuthedRequest, res: Response) => {
   }
 };
 
-// Update số lượng (quantity) của cart của chính user
-// params: :id = cartId
-// body: { quantity: number }
 export const updateQuantityProductCart = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.userId || req.user?.id;
     if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-    const cartId = req.params.id as string;
-    if (!cartId) return res.status(400).json({ message: "Thiếu cartId" });
-    if (!mongoose.Types.ObjectId.isValid(cartId)) {
-      return res.status(400).json({ message: "cartId không hợp lệ" });
+    const itemId = req.params.id as string;
+    if (!itemId) return res.status(400).json({ message: "Thiếu itemId" });
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ message: "itemId không hợp lệ" });
     }
 
     const { quantity } = req.body as { quantity?: number };
@@ -199,19 +209,18 @@ export const updateQuantityProductCart = async (req: AuthedRequest, res: Respons
       return res.status(400).json({ message: "quantity phải là số > 0" });
     }
 
-    const cart = await Cart.findById(cartId);
+    const cart = await Cart.findOne({ userId });
     if (!cart) return res.status(404).json({ message: "Không tìm thấy giỏ hàng" });
 
-    // Ownership check
-    if (cart.userId.toString() !== userId.toString()) {
-      return res.status(403).json({ message: "Bạn không có quyền truy cập" });
-    }
+    const item = cart.items.find((i: any) => i._id.toString() === itemId);
+    if (!item) return res.status(404).json({ message: "Không tìm thấy sản phẩm trong giỏ hàng" });
 
-    // Recalculate total price based on new quantity
-    cart.totalPrice = cart.items.reduce((sum: number, item: any) => sum + (item.price * quantity), 0);
+    (item as any).quantity = quantity;
+
+    cart.totalPrice = cart.items.reduce((sum: number, i: any) => sum + (i.price * i.quantity), 0);
     await cart.save();
 
-    return res.status(200).json({ message: "Cập nhật số lượng thành công", cart });
+    return res.status(200).json({ message: "Cập nhật số lượng thành công", data: cart });
   } catch (error: any) {
     return res.status(500).json({ message: error?.message || "Lỗi server" });
   }

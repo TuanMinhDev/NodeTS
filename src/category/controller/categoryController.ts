@@ -3,7 +3,7 @@ import Category from "../model/categoryModel";
 
 export const createCategory = async (req: Request, res: Response) => {
     try {
-        const { name, description, image } = req.body;
+        const { name, description } = req.body;
 
         if (!name) {
             return res.status(400).json({ message: "Tên danh mục là bắt buộc" });
@@ -17,7 +17,6 @@ export const createCategory = async (req: Request, res: Response) => {
         const category = new Category({
             name,
             description,
-            image,
         });
 
         const savedCategory = await category.save();
@@ -29,7 +28,7 @@ export const createCategory = async (req: Request, res: Response) => {
 
 export const getCategories = async (req: Request, res: Response) => {
     try {
-        const categories = await Category.find({ isActive: true }).sort({ createdAt: -1 });
+        const categories = await Category.find().sort({ createdAt: -1 });
         res.status(200).json({ message: "Lấy danh sách danh mục thành công", categories });
     } catch (error: any) {
         res.status(500).json({ message: error.message });
@@ -54,11 +53,11 @@ export const getCategory = async (req: Request, res: Response) => {
 export const updateCategory = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, description, image, isActive } = req.body;
+        const { name, description } = req.body;
 
         const category = await Category.findByIdAndUpdate(
             id,
-            { name, description, image, isActive },
+            { name, description },
             { new: true, runValidators: true }
         );
 
@@ -75,17 +74,13 @@ export const updateCategory = async (req: Request, res: Response) => {
 export const deleteCategory = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const category = await Category.findByIdAndUpdate(
-            id,
-            { isActive: false },
-            { new: true }
-        );
+        const category = await Category.findByIdAndDelete(id);
 
         if (!category) {
             return res.status(404).json({ message: "Không tìm thấy danh mục" });
         }
 
-        res.status(200).json({ message: "Xóa danh mục thành công", category });
+        res.status(200).json({ message: "Xóa danh mục thành công" });
     } catch (error: any) {
         res.status(500).json({ message: error.message });
     }
