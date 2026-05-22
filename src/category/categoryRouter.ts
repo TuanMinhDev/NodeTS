@@ -4,10 +4,10 @@ import { createCategory, getCategories, getCategory, updateCategory, deleteCateg
 
 const categoryRouter = express.Router();
 
-categoryRouter.post("/", checkPermission(["admin", "seller"]), createCategory);
+categoryRouter.post("/", checkPermission(["admin"]), createCategory);
 categoryRouter.get("/", getCategories);
 categoryRouter.get("/:id", getCategory);
-categoryRouter.put("/:id", checkPermission(["admin", "seller"]), updateCategory);
-categoryRouter.delete("/:id", checkPermission(["admin", "seller"]), deleteCategory);
+categoryRouter.put("/:id", checkPermission(["admin"]), updateCategory);
+categoryRouter.delete("/:id", checkPermission(["admin"]), deleteCategory);
 
 export default categoryRouter;

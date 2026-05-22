@@ -113,7 +113,6 @@ export interface StandardError {
  */
 export enum UserRole {
     ADMIN = "admin",
-    SELLER = "seller",
     USER = "user"
 }
 
@@ -145,8 +144,7 @@ export enum NotificationType {
     SYSTEM = "system",
     ORDER = "order",
     PRODUCT = "product",
-    COMMENT = "comment",
-    FOLLOWER = "follower"
+    COMMENT = "comment"
 }
 
 /**

@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import Product from "../model/productModel";
+import { AuthedRequest } from "../../_component";
 import { v2 as cloudinary } from "cloudinary";
 import { notifyProductCreated } from "../../notification/service/notificationService";
 
@@ -154,6 +156,48 @@ export const getProduct = async (req: Request, res: Response) => {
         const total = await Product.countDocuments(filter);
 
         return res.status(200).json({
+            items: products,
+            totalItems: total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page,
+        });
+    } catch (error: any) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+/** Admin: danh sách sản phẩm trong hệ thống; có thể lọc ?sellerId= (tài khoản cửa hàng) */
+export const getProductsForSeller = async (req: AuthedRequest, res: Response) => {
+    try {
+        const userId = req.user?.userId || req.user?.id;
+        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
+
+        let filter: Record<string, unknown>;
+        const q = req.query.sellerId;
+        const sellerIdParam = typeof q === "string" ? q.trim() : "";
+        if (sellerIdParam) {
+            if (!mongoose.Types.ObjectId.isValid(sellerIdParam)) {
+                return res.status(400).json({ message: "sellerId không hợp lệ" });
+            }
+            filter = { sellerId: sellerIdParam };
+        } else {
+            filter = {};
+        }
+
+        const page = Math.max(1, Number(req.query.pageNumber) || 1);
+        const limit = Math.max(1, Number(req.query.pageSize) || 10);
+        const skip = (page - 1) * limit;
+
+        const products = await Product.find(filter)
+            .populate("sellerId", "name email avatar")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const total = await Product.countDocuments(filter);
+
+        return res.status(200).json({
+            message: "Lấy danh sách sản phẩm thành công",
             items: products,
             totalItems: total,
             totalPages: Math.ceil(total / limit),

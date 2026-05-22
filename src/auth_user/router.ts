@@ -1,6 +1,6 @@
 import express from "express";
 import { register, login, changePassword, refreshToken } from "./controller/authController";
-import { getMe, updateInfoUser, getAllUser, deleteUser } from "./controller/userController";
+import { getMe, updateInfoUser, getAllUser, deleteUser, getPublicSellerProfile } from "./controller/userController";
 import { checkPermission } from "./middleware/index";
 const userRouter = express.Router();
 
@@ -9,6 +9,7 @@ const userRouter = express.Router();
 
 userRouter.post("/register", register);
 userRouter.post("/login", login);
+userRouter.get("/seller/:sellerId", getPublicSellerProfile);
 userRouter.get("/me", checkPermission(["admin", "user"]), getMe);
 userRouter.put("/update-info", checkPermission(["admin", "user"]), updateInfoUser);
 userRouter.get("/all", checkPermission(["admin"]), getAllUser);

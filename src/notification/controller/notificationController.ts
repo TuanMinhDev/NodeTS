@@ -1,32 +1,7 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import mongoose from "mongoose";
-import Notification from "../model/notificationModel";
+import UserNotificationInbox from "../model/notificationModel";
 import { AuthedRequest } from "../../_component";
-
-export const createNotification = async (req: AuthedRequest, res: Response) => {
-    try {
-        const { userId, title, content, type, relatedId, relatedModel, data } = req.body;
-
-        if (!userId || !title || !content || !type) {
-            return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
-        }
-
-        const notification = new Notification({
-            userId,
-            title,
-            content,
-            type,
-            relatedId,
-            relatedModel,
-            data,
-        });
-
-        const savedNotification = await notification.save();
-        res.status(201).json({ message: "Tạo thông báo thành công", notification: savedNotification });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
 
 export const getNotifications = async (req: AuthedRequest, res: Response) => {
     try {
@@ -35,19 +10,49 @@ export const getNotifications = async (req: AuthedRequest, res: Response) => {
 
         const { page = 1, limit = 10, isRead } = req.query;
         const skip = (Number(page) - 1) * Number(limit);
+        const userObjectId = new mongoose.Types.ObjectId(userId as string);
 
-        const filter: any = { userId };
+        const matchItems: Record<string, unknown> = {};
         if (isRead !== undefined) {
-            filter.isRead = isRead === "true";
+            matchItems["items.isRead"] = isRead === "true";
         }
 
-        const notifications = await Notification.find(filter)
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(Number(limit));
+        const basePipeline: mongoose.PipelineStage[] = [
+            { $match: { userId: userObjectId } },
+            { $unwind: "$items" },
+        ];
+        if (Object.keys(matchItems).length) {
+            basePipeline.push({ $match: matchItems });
+        }
 
-        const total = await Notification.countDocuments(filter);
-        const unreadCount = await Notification.countDocuments({ userId, isRead: false });
+        const listPipeline: mongoose.PipelineStage[] = [
+            ...basePipeline,
+            { $sort: { "items.sentAt": -1, "items._id": -1 } },
+            { $skip: skip },
+            { $limit: Number(limit) },
+            { $replaceRoot: { newRoot: "$items" } },
+        ];
+
+        const countPipeline: mongoose.PipelineStage[] = [
+            ...basePipeline,
+            { $count: "total" },
+        ];
+
+        const unreadPipeline: mongoose.PipelineStage[] = [
+            { $match: { userId: userObjectId } },
+            { $unwind: "$items" },
+            { $match: { "items.isRead": false } },
+            { $count: "total" },
+        ];
+
+        const [notifications, countAgg, unreadAgg] = await Promise.all([
+            UserNotificationInbox.aggregate(listPipeline),
+            UserNotificationInbox.aggregate(countPipeline),
+            UserNotificationInbox.aggregate(unreadPipeline),
+        ]);
+
+        const total = countAgg[0]?.total ?? 0;
+        const unreadCount = unreadAgg[0]?.total ?? 0;
 
         res.status(200).json({
             message: "Lấy danh sách thông báo thành công",
@@ -56,7 +61,7 @@ export const getNotifications = async (req: AuthedRequest, res: Response) => {
                 page: Number(page),
                 limit: Number(limit),
                 total,
-                pages: Math.ceil(total / Number(limit)),
+                pages: Math.ceil(total / Number(limit)) || 0,
             },
             unreadCount,
         });
@@ -70,17 +75,23 @@ export const markAsRead = async (req: AuthedRequest, res: Response) => {
         const userId = req.user?.userId || req.user?.id;
         if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-        const { id } = req.params;
-        const notification = await Notification.findOneAndUpdate(
-            { _id: id, userId },
-            { isRead: true },
+        const id = String(req.params.id);
+        const inbox = await UserNotificationInbox.findOneAndUpdate(
+            { userId, "items._id": id },
+            {
+                $set: {
+                    "items.$.isRead": true,
+                    "items.$.readAt": new Date(),
+                },
+            },
             { new: true }
         );
 
-        if (!notification) {
+        if (!inbox) {
             return res.status(404).json({ message: "Không tìm thấy thông báo" });
         }
 
+        const notification = inbox.items.id(id);
         res.status(200).json({ message: "Đánh dấu đã đọc thành công", notification });
     } catch (error: any) {
         res.status(500).json({ message: error.message });
@@ -92,10 +103,17 @@ export const markAllAsRead = async (req: AuthedRequest, res: Response) => {
         const userId = req.user?.userId || req.user?.id;
         if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-        await Notification.updateMany(
-            { userId, isRead: false },
-            { isRead: true }
-        );
+        const inbox = await UserNotificationInbox.findOne({ userId });
+        if (inbox) {
+            const now = new Date();
+            for (const item of inbox.items) {
+                if (!item.isRead) {
+                    item.isRead = true;
+                    item.readAt = now;
+                }
+            }
+            await inbox.save();
+        }
 
         res.status(200).json({ message: "Đánh dấu tất cả đã đọc thành công" });
     } catch (error: any) {
@@ -108,10 +126,17 @@ export const deleteNotification = async (req: AuthedRequest, res: Response) => {
         const userId = req.user?.userId || req.user?.id;
         if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-        const { id } = req.params;
-        const notification = await Notification.findOneAndDelete({ _id: id, userId });
+        const id = String(req.params.id);
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Id không hợp lệ" });
+        }
 
-        if (!notification) {
+        const result = await UserNotificationInbox.updateOne(
+            { userId, "items._id": id },
+            { $pull: { items: { _id: id } } }
+        );
+
+        if (result.matchedCount === 0) {
             return res.status(404).json({ message: "Không tìm thấy thông báo" });
         }
 

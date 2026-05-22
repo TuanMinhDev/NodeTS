@@ -5,7 +5,7 @@ import { addToCart, deleteProductCart, getCart, updateQuantityProductCart } from
 
 const cartRouter = express.Router();
 
-cartRouter.post("/add", checkPermission(["admin", "user", "seller"]), addToCart);
+cartRouter.post("/add", checkPermission(["admin", "user"]), addToCart);
 cartRouter.get("/get", checkPermission(["admin", "user"]), getCart);
 
 cartRouter.delete("/delete", checkPermission(["admin", "user"]), deleteProductCart);

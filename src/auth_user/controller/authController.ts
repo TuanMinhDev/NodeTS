@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 export const register = async (req: Request, res: Response) => {
     try {
-        const { email, password, name, phoneNumber, role } = req.body;
+        const { email, password, name, phoneNumber } = req.body;
 
         if (!email || !password || !name  || !phoneNumber) {
             return res.status(400).json({ message: "Chưa nhập đầy đủ dữ liệu" });
@@ -21,7 +21,8 @@ export const register = async (req: Request, res: Response) => {
         if (checkPhoneNumber) {
             return res.status(400).json({ message: "Số điện thoại đã tồn tại" });
         }
-        const user = await userModel.create({ email, name, phoneNumber, role });
+        // Chỉ tạo tài khoản buyer; vai trò admin do hệ thống gán riêng, không nhận từ client
+        const user = await userModel.create({ email, name, phoneNumber, role: "user" });
         await authModel.create({ user_name: email, password, userId: user._id });
         res.status(201).json({ message: "Đăng ký thành công" });
     } catch (error) {

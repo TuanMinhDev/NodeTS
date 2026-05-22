@@ -1,14 +1,13 @@
 import { Server as SocketIOServer } from "socket.io";
 import { Server as HTTPServer } from "http";
-import Notification from "../model/notificationModel";
-import Follower from "../../follower/model/followerModel";
+import UserNotificationInbox from "../model/notificationModel";
 
 let io: SocketIOServer;
 
 export const initializeSocketIO = (server: HTTPServer): SocketIOServer => {
     io = new SocketIOServer(server, {
         cors: {
-            origin: "*",
+            origin: ["http://localhost:3000", "http://192.168.1.47:3000", "http://localhost:5173"],
             methods: ["GET", "POST"]
         }
     });
@@ -69,25 +68,40 @@ export const createNotification = async (notificationData: {
     data?: any;
 }) => {
     try {
-        const notification = new Notification(notificationData);
-        await notification.save();
+        const item = {
+            title: notificationData.title,
+            message: notificationData.content,
+            type: notificationData.type,
+            ...(notificationData.relatedId && { relatedId: notificationData.relatedId }),
+            ...(notificationData.relatedModel && { relatedModel: notificationData.relatedModel }),
+            metadata: notificationData.data ?? {},
+        };
+
+        const inbox = await UserNotificationInbox.findOneAndUpdate(
+            { userId: notificationData.userId },
+            { $push: { items: item }, $setOnInsert: { userId: notificationData.userId } },
+            { new: true, upsert: true }
+        );
+
+        const newItem = inbox.items[inbox.items.length - 1];
 
         // Send real-time notification if user is online
-        if (io) {
+        if (io && newItem) {
             io.to(`user_${notificationData.userId}`).emit("newNotification", {
-                _id: notification._id,
-                title: notification.title,
-                content: notification.content,
-                type: notification.type,
-                relatedId: notification.relatedId,
-                relatedModel: notification.relatedModel,
-                data: notification.data,
-                isRead: notification.isRead,
-                createdAt: notification.createdAt
+                _id: newItem._id,
+                title: newItem.title,
+                message: newItem.message,
+                type: newItem.type,
+                relatedId: newItem.relatedId,
+                relatedModel: newItem.relatedModel,
+                metadata: newItem.metadata,
+                isRead: newItem.isRead,
+                sentAt: newItem.sentAt,
+                createdAt: (newItem as any).createdAt,
             });
         }
 
-        return notification;
+        return newItem;
     } catch (error) {
         console.error("Error creating notification:", error);
         throw error;
@@ -96,23 +110,6 @@ export const createNotification = async (notificationData: {
 
 export const notifyProductCreated = async (sellerId: string, productId: string, productName: string) => {
     try {
-        const doc = await Follower.findOne({ sellerId });
-        const followerEntries = doc?.followers ?? [];
-
-        const notifications = followerEntries.map((f) => ({
-            userId: f.userId.toString(),
-            title: "Sản phẩm mới",
-            content: `${productName} vừa được đăng bán bởi seller bạn theo dõi`,
-            type: "product",
-            relatedId: productId,
-            relatedModel: "Product",
-            data: { productId, productName }
-        }));
-
-        // Create notifications for all followers
-        await Promise.all(notifications.map(notif => createNotification(notif)));
-
-        // Notify seller about successful product creation
         await createNotification({
             userId: sellerId,
             title: "Tạo sản phẩm thành công",
@@ -122,8 +119,6 @@ export const notifyProductCreated = async (sellerId: string, productId: string, 
             relatedModel: "Product",
             data: { productId, productName }
         });
-
-        console.log(`Notified ${followerEntries.length} followers about new product: ${productName}`);
     } catch (error) {
         console.error("Error notifying product created:", error);
     }
@@ -131,22 +126,22 @@ export const notifyProductCreated = async (sellerId: string, productId: string, 
 
 export const notifyOrderCreated = async (sellerId: string, buyerId: string, orderId: string, orderCode: string) => {
     try {
-        // Notify seller about new order
+        // Người bán: đơn hàng mới
         await createNotification({
             userId: sellerId,
-            title: "Đơn hàng mới",
-            content: `Bạn có đơn hàng mới: ${orderCode}`,
+            title: "Bạn có đơn hàng mới",
+            content: `Mã đơn: ${orderCode}. Mở ứng dụng để xem chi tiết.`,
             type: "order",
             relatedId: orderId,
             relatedModel: "Order",
             data: { orderId, orderCode, buyerId }
         });
 
-        // Notify buyer about successful order placement
+        // Người mua: đặt hàng thành công
         await createNotification({
             userId: buyerId,
-            title: "Đặt hàng thành công",
-            content: `Đơn hàng ${orderCode} đã được đặt thành công`,
+            title: "Đặt đơn hàng thành công",
+            content: `Bạn đã đặt đơn hàng thành công. Mã đơn: ${orderCode}.`,
             type: "order",
             relatedId: orderId,
             relatedModel: "Order",

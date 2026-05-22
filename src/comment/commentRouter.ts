@@ -1,14 +1,11 @@
 import express from "express";
 import { checkPermission } from "../auth_user/middleware";
-import { createComment, getCommentsByProduct, updateComment, deleteComment, likeComment, replyToComment } from "./controller/commentController";
+import { createComment, getCommentsByProduct, getReviewableItems } from "./controller/commentController";
 
 const commentRouter = express.Router();
 
-commentRouter.post("/", checkPermission(["admin", "user", "seller"]), createComment);
+commentRouter.post("/", checkPermission(["admin", "user"]), createComment);
 commentRouter.get("/product/:productId", getCommentsByProduct);
-commentRouter.put("/:id", checkPermission(["admin", "user", "seller"]), updateComment);
-commentRouter.delete("/:id", checkPermission(["admin", "user", "seller"]), deleteComment);
-commentRouter.post("/:id/like", checkPermission(["admin", "user", "seller"]), likeComment);
-commentRouter.post("/:id/reply", checkPermission(["admin", "user", "seller"]), replyToComment);
+commentRouter.get("/order/:orderId/reviewable-items", checkPermission(["admin", "user"]), getReviewableItems);
 
 export default commentRouter;

@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sơ đồ Phân Quyền - NodeTS Marketplace</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0f0f1a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 40px 24px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+      margin-bottom: 48px;
+    }
+
+    /* ── SECTION TITLE ── */
+    .section-title {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #475569;
+      margin: 48px 0 20px;
+    }
+
+    /* ── ROLE CARDS ── */
+    .roles-row {
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .role-card {
+      width: 280px;
+      border-radius: 20px;
+      padding: 28px 24px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid transparent;
+      transition: transform 0.25s;
+    }
+    .role-card:hover { transform: translateY(-4px); }
+
+    .role-card.admin {
+      background: linear-gradient(145deg, #1e1133, #2d1b69);
+      border-color: #7c3aed44;
+      box-shadow: 0 0 40px #7c3aed22;
+    }
+    .role-card.seller {
+      background: linear-gradient(145deg, #111827, #1e3a5f);
+      border-color: #3b82f644;
+      box-shadow: 0 0 40px #3b82f622;
+    }
+    .role-card.user {
+      background: linear-gradient(145deg, #0f2118, #0d3321);
+      border-color: #10b98144;
+      box-shadow: 0 0 40px #10b98122;
+    }
+
+    .role-icon {
+      font-size: 42px;
+      margin-bottom: 12px;
+    }
+    .role-name {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .role-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    .admin .role-name  { color: #c4b5fd; }
+    .admin .role-badge { background: #7c3aed33; color: #a78bfa; border: 1px solid #7c3aed55; }
+    .seller .role-name { color: #93c5fd; }
+    .seller .role-badge{ background: #3b82f633; color: #60a5fa; border: 1px solid #3b82f655; }
+    .user .role-name   { color: #6ee7b7; }
+    .user .role-badge  { background: #10b98133; color: #34d399; border: 1px solid #10b98155; }
+
+    .role-desc {
+      font-size: 12.5px;
+      color: #94a3b8;
+      line-height: 1.6;
+      padding-top: 12px;
+      border-top: 1px solid #ffffff0d;
+    }
+
+    /* ── PERMISSION TABLE ── */
+    .perm-section {
+      max-width: 1100px;
+      margin: 0 auto 60px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    thead tr {
+      background: #1e293b;
+    }
+    thead th {
+      padding: 12px 16px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #334155;
+    }
+    thead th:first-child { text-align: left; border-radius: 10px 0 0 0; }
+    thead th:last-child  { border-radius: 0 10px 0 0; }
+
+    thead th.col-admin  { color: #a78bfa; }
+    thead th.col-seller { color: #60a5fa; }
+    thead th.col-user   { color: #34d399; }
+    thead th.col-public { color: #fb923c; }
+
+    tbody tr {
+      border-bottom: 1px solid #1e293b;
+      transition: background 0.15s;
+    }
+    tbody tr:hover { background: #ffffff06; }
+
+    tbody tr.group-header td {
+      background: #1a2436;
+      color: #60a5fa;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 8px 16px;
+    }
+
+    td {
+      padding: 9px 16px;
+      color: #94a3b8;
+      vertical-align: middle;
+    }
+    td:first-child {
+      color: #e2e8f0;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    td:not(:first-child) { text-align: center; }
+
+    .check { color: #34d399; font-size: 16px; }
+    .cross  { color: #ef444455; font-size: 14px; }
+    .pub    { color: #fb923c;   font-size: 14px; }
+
+    /* ── FLOW DIAGRAM ── */
+    .flow-section {
+      max-width: 1100px;
+      margin: 0 auto 60px;
+    }
+
+    .flow-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+
+    .flow-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .flow-col-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 8px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+    }
+    .flow-col-title.admin  { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
+    .flow-col-title.seller { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
+    .flow-col-title.user   { background: #10b98122; color: #34d399; border: 1px solid #10b98144; }
+
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #cbd5e1;
+      border-left: 3px solid transparent;
+      line-height: 1.5;
+    }
+    .flow-col.admin-col  .flow-step { border-left-color: #7c3aed; }
+    .flow-col.seller-col .flow-step { border-left-color: #3b82f6; }
+    .flow-col.user-col   .flow-step { border-left-color: #10b981; }
+
+    .step-num {
+      min-width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .admin-col  .step-num { background: #7c3aed33; color: #a78bfa; }
+    .seller-col .step-num { background: #3b82f633; color: #60a5fa; }
+    .user-col   .step-num { background: #10b98133; color: #34d399; }
+
+    /* ── NOTIFICATION FLOW ── */
+    .notif-box {
+      max-width: 1100px;
+      margin: 0 auto 60px;
+      background: #111827;
+      border-radius: 16px;
+      border: 1px solid #1e293b;
+      padding: 32px;
+    }
+
+    .notif-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      margin-top: 8px;
+    }
+
+    .notif-role {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .notif-role-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .notif-role-title.admin  { color: #a78bfa; }
+    .notif-role-title.seller { color: #60a5fa; }
+    .notif-role-title.user   { color: #34d399; }
+
+    .notif-item {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #94a3b8;
+      border-left: 3px solid;
+      line-height: 1.5;
+    }
+    .notif-item.admin  { border-color: #7c3aed; }
+    .notif-item.seller { border-color: #3b82f6; }
+    .notif-item.user   { border-color: #10b981; }
+
+    .notif-item span { font-weight: 600; display: block; color: #e2e8f0; margin-bottom: 2px; font-size: 11.5px; }
+
+    /* FOOTER */
+    footer {
+      text-align: center;
+      color: #334155;
+      font-size: 11px;
+      padding-top: 24px;
+      border-top: 1px solid #1e293b;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>SƠ ĐỒ PHÂN QUYỀN HỆ THỐNG</h1>
+  <p class="subtitle">NodeTS · Multi-vendor Marketplace · 3 Roles: Admin · Seller · User</p>
+
+  <!-- ROLE CARDS -->
+  <p class="section-title">Các Vai Trò</p>
+  <div class="roles-row">
+
+    <div class="role-card admin">
+      <div class="role-icon">👑</div>
+      <div class="role-name">Admin</div>
+      <div class="role-badge">QUẢN TRỊ VIÊN</div>
+      <div class="role-desc">
+        Toàn quyền kiểm soát hệ thống. Xem và can thiệp vào mọi tài nguyên:
+        người dùng, sản phẩm, đơn hàng, danh mục.
+        Có thể xóa bất kỳ tài khoản hoặc sản phẩm nào.
+      </div>
+    </div>
+
+    <div class="role-card seller">
+      <div class="role-icon">🏪</div>
+      <div class="role-name">Seller</div>
+      <div class="role-badge">NGƯỜI BÁN</div>
+      <div class="role-desc">
+        Mở gian hàng, đăng bán sản phẩm với đa biến thể màu/size.
+        Xử lý đơn hàng từ shop mình. Bắt buộc có địa chỉ kho hàng (warehouse)
+        trước khi bán.
+      </div>
+    </div>
+
+    <div class="role-card user">
+      <div class="role-icon">🛍️</div>
+      <div class="role-name">User</div>
+      <div class="role-badge">NGƯỜI MUA</div>
+      <div class="role-desc">
+        Tìm kiếm, mua sắm và đánh giá sản phẩm.
+        Quản lý giỏ hàng, theo dõi đơn hàng, chat với seller,
+        follow gian hàng yêu thích.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- PERMISSION TABLE -->
+  <p class="section-title">Bảng Phân Quyền API</p>
+  <div class="perm-section">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:42%">API Endpoint</th>
+          <th class="col-admin">👑 Admin</th>
+          <th class="col-seller">🏪 Seller</th>
+          <th class="col-user">🛍️ User</th>
+          <th class="col-public" style="color:#fb923c">🌐 Public</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <!-- AUTH -->
+        <tr class="group-header"><td colspan="5">🔐 XÁC THỰC & TÀI KHOẢN</td></tr>
+        <tr><td>POST /user/register</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>POST /user/login</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>POST /user/refresh-token</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>GET /user/seller/:sellerId</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>GET /user/me</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /user/update-info</td><td class="check">✔</td><td class="cross">✕</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>POST /user/change-password</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /user/all</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /user/delete/:id</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+
+        <!-- DANH MUC -->
+        <tr class="group-header"><td colspan="5">📂 DANH MỤC SẢN PHẨM</td></tr>
+        <tr><td>GET /category/</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>GET /category/:id</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>POST /category/</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /category/:id</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /category/:id</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+
+        <!-- SAN PHAM -->
+        <tr class="group-header"><td colspan="5">📦 SẢN PHẨM</td></tr>
+        <tr><td>GET /product/get</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>GET /product/:id</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>GET /product/seller (shop mình)</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>POST /product/create</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /product/:id</td><td class="check">✔</td><td class="check">✔ <small style="color:#64748b">(của mình)</small></td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /product/:id</td><td class="check">✔</td><td class="check">✔ <small style="color:#64748b">(của mình)</small></td><td class="cross">✕</td><td class="cross">✕</td></tr>
+
+        <!-- GIO HANG -->
+        <tr class="group-header"><td colspan="5">🛒 GIỎ HÀNG</td></tr>
+        <tr><td>POST /cart/add</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /cart/get</td><td class="check">✔</td><td class="cross">✕</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /cart/delete</td><td class="check">✔</td><td class="cross">✕</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /cart/update/:id</td><td class="check">✔</td><td class="cross">✕</td><td class="check">✔</td><td class="cross">✕</td></tr>
+
+        <!-- DON HANG -->
+        <tr class="group-header"><td colspan="5">📋 ĐƠN HÀNG</td></tr>
+        <tr><td>GET /order/shipping-options</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>POST /order/create</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /order/ (của mình)</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /order/seller (đơn của shop)</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>GET /order/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /order/status/:id</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td><td class="cross">✕</td></tr>
+
+        <!-- COMMENT -->
+        <tr class="group-header"><td colspan="5">⭐ BÌNH LUẬN & ĐÁNH GIÁ</td></tr>
+        <tr><td>GET /comment/product/:productId</td><td class="cross">✕</td><td class="cross">✕</td><td class="cross">✕</td><td class="pub">✔</td></tr>
+        <tr><td>POST /comment/</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /comment/order/:id/reviewable</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+
+        <!-- FAVORITE / FOLLOWER -->
+        <tr class="group-header"><td colspan="5">❤️ YÊU THÍCH & THEO DÕI</td></tr>
+        <tr><td>POST /favorite/ (thêm sản phẩm)</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /favorite/</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /favorite/:productId</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>POST /follower/follow</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /follower/unfollow/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /follower/following</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /follower/followers/:id</td><td class="check">✔</td><td class="check">✔ <small style="color:#64748b">(của mình)</small></td><td class="cross">✕</td><td class="cross">✕</td></tr>
+        <tr><td>GET /follower/status/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+
+        <!-- MESSAGE -->
+        <tr class="group-header"><td colspan="5">💬 TIN NHẮN</td></tr>
+        <tr><td>POST /message/conversation</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /message/conversations</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>POST /message/send</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /message/messages/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /message/read/:id (đọc)</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /message/message/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /message/message/:id (sửa)</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+
+        <!-- NOTIFICATION -->
+        <tr class="group-header"><td colspan="5">🔔 THÔNG BÁO</td></tr>
+        <tr><td>GET /notification/</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /notification/:id/read</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /notification/read-all</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /notification/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+
+        <!-- ADDRESS -->
+        <tr class="group-header"><td colspan="5">📍 ĐỊA CHỈ</td></tr>
+        <tr><td>POST /address/</td><td class="check">✔</td><td class="check">✔ <small style="color:#64748b">(phải có warehouse)</small></td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>GET /address/</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /address/:id</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>DELETE /address/:id</td><td class="check">✔</td><td class="check">✔ <small style="color:#64748b">(không xóa warehouse cuối)</small></td><td class="check">✔</td><td class="cross">✕</td></tr>
+        <tr><td>PUT /address/:id/default</td><td class="check">✔</td><td class="check">✔</td><td class="check">✔</td><td class="cross">✕</td></tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <!-- LUONG HOAT DONG -->
+  <p class="section-title">Luồng Hoạt Động Chính Theo Vai Trò</p>
+  <div class="flow-section">
+    <div class="flow-grid">
+
+      <div class="flow-col admin-col">
+        <div class="flow-col-title admin">👑 Admin</div>
+        <div class="flow-step"><div class="step-num">1</div><div>Đăng nhập hệ thống</div></div>
+        <div class="flow-step"><div class="step-num">2</div><div>Xem toàn bộ danh sách người dùng, lọc theo role/tên</div></div>
+        <div class="flow-step"><div class="step-num">3</div><div>Tạo / xóa tài khoản nếu vi phạm</div></div>
+        <div class="flow-step"><div class="step-num">4</div><div>Quản lý danh mục sản phẩm (tạo, sửa, xóa)</div></div>
+        <div class="flow-step"><div class="step-num">5</div><div>Xem tất cả sản phẩm, can thiệp sản phẩm vi phạm</div></div>
+        <div class="flow-step"><div class="step-num">6</div><div>Xem toàn bộ đơn hàng của mọi seller</div></div>
+        <div class="flow-step"><div class="step-num">7</div><div>Cập nhật trạng thái bất kỳ đơn hàng nào</div></div>
+        <div class="flow-step"><div class="step-num">8</div><div>Xem danh sách followers của bất kỳ seller nào</div></div>
+        <div class="flow-step"><div class="step-num">9</div><div>Nhận & quản lý thông báo cá nhân</div></div>
+      </div>
+
+      <div class="flow-col seller-col">
+        <div class="flow-col-title seller">🏪 Seller</div>
+        <div class="flow-step"><div class="step-num">1</div><div>Đăng ký tài khoản với role="seller"</div></div>
+        <div class="flow-step"><div class="step-num">2</div><div>Thêm địa chỉ kho hàng (warehouse) - BẮT BUỘC</div></div>
+        <div class="flow-step"><div class="step-num">3</div><div>Tạo sản phẩm: tên, mô tả, danh mục, biến thể màu/size/giá, ảnh</div></div>
+        <div class="flow-step"><div class="step-num">4</div><div>Thông báo tự động gửi tới các follower</div></div>
+        <div class="flow-step"><div class="step-num">5</div><div>Nhận thông báo khi có đơn hàng mới</div></div>
+        <div class="flow-step"><div class="step-num">6</div><div>Xem chi tiết đơn hàng được đặt</div></div>
+        <div class="flow-step"><div class="step-num">7</div><div>Cập nhật trạng thái đơn: pending → shipping → delivered</div></div>
+        <div class="flow-step"><div class="step-num">8</div><div>Nhắn tin trả lời khách hàng qua hệ thống chat</div></div>
+        <div class="flow-step"><div class="step-num">9</div><div>Xem danh sách follower của gian hàng mình</div></div>
+      </div>
+
+      <div class="flow-col user-col">
+        <div class="flow-col-title user">🛍️ User</div>
+        <div class="flow-step"><div class="step-num">1</div><div>Đăng ký / Đăng nhập tài khoản</div></div>
+        <div class="flow-step"><div class="step-num">2</div><div>Thêm địa chỉ giao hàng cá nhân</div></div>
+        <div class="flow-step"><div class="step-num">3</div><div>Tìm kiếm sản phẩm (lọc giá, màu, size, sale,...)</div></div>
+        <div class="flow-step"><div class="step-num">4</div><div>Thêm sản phẩm vào giỏ hàng (tự động tính giá sale)</div></div>
+        <div class="flow-step"><div class="step-num">5</div><div>Kiểm tra phí vận chuyển (tiết kiệm / nhanh / hỏa tốc)</div></div>
+        <div class="flow-step"><div class="step-num">6</div><div>Đặt hàng, nhận mã đơn ORDxxxxxx</div></div>
+        <div class="flow-step"><div class="step-num">7</div><div>Theo dõi trạng thái đơn hàng qua thông báo</div></div>
+        <div class="flow-step"><div class="step-num">8</div><div>Đánh giá sản phẩm (chỉ sau khi đơn "delivered")</div></div>
+        <div class="flow-step"><div class="step-num">9</div><div>Follow gian hàng, chat với seller, lưu yêu thích</div></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- NOTIFICATION ROLES -->
+  <p class="section-title">Thông Báo Theo Vai Trò</p>
+  <div class="notif-box">
+    <div class="notif-grid">
+
+      <div class="notif-role">
+        <div class="notif-role-title admin">👑 Admin nhận</div>
+        <div class="notif-item admin"><span>Thông báo hệ thống</span>Các sự kiện theo nghiệp vụ mở rộng</div>
+        <div class="notif-item admin"><span>Thông báo cá nhân</span>Như một user bình thường khi tham gia hoạt động</div>
+      </div>
+
+      <div class="notif-role">
+        <div class="notif-role-title seller">🏪 Seller nhận</div>
+        <div class="notif-item seller"><span>Tạo sản phẩm thành công</span>Xác nhận sau mỗi lần đăng sản phẩm mới</div>
+        <div class="notif-item seller"><span>Bạn có đơn hàng mới</span>Mã đơn: ORDxxxxxx từ người mua</div>
+        <div class="notif-item seller"><span>Thông báo hệ thống</span>Các cập nhật từ nền tảng</div>
+      </div>
+
+      <div class="notif-role">
+        <div class="notif-role-title user">🛍️ User nhận</div>
+        <div class="notif-item user"><span>Sản phẩm mới</span>Từ seller đang được follow đăng bán</div>
+        <div class="notif-item user"><span>Đặt đơn thành công</span>Xác nhận ngay sau khi tạo đơn</div>
+        <div class="notif-item user"><span>Đơn hàng đang giao</span>Khi seller cập nhật → "shipping"</div>
+        <div class="notif-item user"><span>Giao hàng thành công</span>Khi seller cập nhật → "delivered"</div>
+        <div class="notif-item user"><span>Đơn hàng bị hủy</span>Khi đơn bị chuyển sang "cancelled"</div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>
+    NodeTS Marketplace · Tài liệu nghiệp vụ · Phiên bản 1.0 · 2026-04-17
+  </footer>
+
+</body>
+</html>

@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import Order from "../model/orderModel";
 import Product from "../../product/model/productModel";
 import Address from "../../address/model/addressModel";
+import { pickShopOriginAddress } from "../../address/pickShopOriginAddress";
+import User from "../../auth_user/model/userModel";
 import { notifyOrderCreated, notifyOrderStatusUpdated } from "../../notification/service/notificationService";
 import { AuthedRequest } from "../../_component";
 
@@ -12,18 +14,15 @@ const RATE_PER_KM      = 4000;   // Hỏa tốc: 4,000đ/km
 const FEE_ECONOMY      = 20000;  // Tiết kiệm: cố định
 const FEE_FAST         = 35000;  // Nhanh: cố định
 
-// Ước tính khoảng cách (km) dựa trên district/ward vì chưa có tọa độ GPS
-const estimateDistanceKm = (
-    sellerDistrict: string, sellerWard: string,
-    buyerDistrict:  string, buyerWard:  string,
-): number => {
-    const sameDistrict = sellerDistrict.trim().toLowerCase() === buyerDistrict.trim().toLowerCase();
-    const sameWard     = sameDistrict && sellerWard.trim().toLowerCase() === buyerWard.trim().toLowerCase();
-
-    if (sameWard)     return 2;   // Cùng phường/xã
-    if (sameDistrict) return 8;   // Cùng quận/huyện, khác phường
-    return 20;                    // Cùng tỉnh, khác quận/huyện
+// Ước tính km trong cùng tỉnh: mô hình 2 cấp (tỉnh/TP – xã/phường), chưa có GPS
+const estimateDistanceKmWithinProvince = (sellerWard: string, buyerWard: string): number => {
+    const sw = sellerWard.trim().toLowerCase();
+    const bw = buyerWard.trim().toLowerCase();
+    if (sw === bw) return 2;
+    return 12;
 };
+
+type ShipPoint = { province: string; ward: string };
 
 type ShippingOptionRow = {
     method: string;
@@ -36,15 +35,15 @@ type ShippingOptionRow = {
 
 /** allowExpress: false khi đơn gom nhiều cửa hàng — không áp dụng hỏa tốc. */
 const buildSellerShippingOptions = (
-    seller: { province: string; district: string; ward: string },
-    buyer: { province: string; district: string; ward: string },
+    seller: ShipPoint,
+    buyer: ShipPoint,
     allowExpress: boolean,
 ): { options: ShippingOptionRow[]; isSameProvince: boolean } => {
     const isSameProvince =
         seller.province.trim().toLowerCase() === buyer.province.trim().toLowerCase();
 
     const distanceKm = isSameProvince
-        ? estimateDistanceKm(seller.district, seller.ward, buyer.district, buyer.ward)
+        ? estimateDistanceKmWithinProvince(seller.ward, buyer.ward)
         : null;
     const expressFee = distanceKm !== null ? distanceKm * RATE_PER_KM : null;
 
@@ -129,7 +128,7 @@ export const getShippingOptions = async (req: AuthedRequest, res: Response) => {
         if (!buyerAddress) {
             return res.status(404).json({ message: "Không tìm thấy địa chỉ giao hàng" });
         }
-        const buyer = buyerAddress as { province: string; district: string; ward: string };
+        const buyer = buyerAddress as { province: string; ward: string };
 
         const products = await Product.find({ _id: { $in: productIds } });
         if (products.length !== productIds.length) {
@@ -152,11 +151,11 @@ export const getShippingOptions = async (req: AuthedRequest, res: Response) => {
         if (useLegacySingleResponse && productIds.length === 1) {
             const sellerId = [...bySeller.keys()][0];
             const sellerAddressDoc = await Address.findOne({ userId: sellerId });
-            const sellerWarehouse = sellerAddressDoc?.addresses.find((a: any) => a.type === "warehouse");
-            if (!sellerWarehouse) {
-                return res.status(400).json({ message: "Seller chưa cấu hình địa chỉ kho hàng" });
+            const sellerOrigin = pickShopOriginAddress(sellerAddressDoc?.addresses as unknown[]);
+            if (!sellerOrigin) {
+                return res.status(400).json({ message: "Cửa hàng chưa cấu hình địa chỉ xuất hàng" });
             }
-            const seller = sellerWarehouse as { province: string; district: string; ward: string };
+            const seller = sellerOrigin;
             const { options, isSameProvince } = buildSellerShippingOptions(seller, buyer, true);
 
             return res.status(200).json({
@@ -183,13 +182,13 @@ export const getShippingOptions = async (req: AuthedRequest, res: Response) => {
 
         for (const [sellerId, pids] of bySeller) {
             const sellerAddressDoc = await Address.findOne({ userId: sellerId });
-            const sellerWarehouse = sellerAddressDoc?.addresses.find((a: any) => a.type === "warehouse");
-            if (!sellerWarehouse) {
+            const sellerOrigin = pickShopOriginAddress(sellerAddressDoc?.addresses as unknown[]);
+            if (!sellerOrigin) {
                 return res.status(400).json({
-                    message: `Seller chưa cấu hình địa chỉ kho hàng (sellerId: ${sellerId})`,
+                    message: `Cửa hàng chưa cấu hình địa chỉ xuất hàng (sellerId: ${sellerId})`,
                 });
             }
-            const seller = sellerWarehouse as { province: string; district: string; ward: string };
+            const seller = sellerOrigin;
             const allowExpress = !multiSeller;
             const { options, isSameProvince } = buildSellerShippingOptions(seller, buyer, allowExpress);
 
@@ -231,7 +230,7 @@ export const getShippingOptions = async (req: AuthedRequest, res: Response) => {
                     label:         "Vận chuyển hỏa tốc",
                     fee:           combinedExpress,
                     estimatedDays: "Trong ngày",
-                    note:          "Chỉ khi toàn bộ sản phẩm cùng một cửa hàng và cùng tỉnh với kho",
+                    note:          "Chỉ khi toàn bộ sản phẩm cùng một cửa hàng và cùng tỉnh với điểm xuất hàng",
                 } as ShippingOptionRow]
                 : []),
         ];
@@ -294,6 +293,56 @@ export const createOrder = async (req: AuthedRequest, res: Response) => {
             }
         }
 
+        const itemProductIds = items.map((i: { productId: string }) => i.productId);
+        const orderedProducts = await Product.find({ _id: { $in: itemProductIds } });
+        if (orderedProducts.length !== itemProductIds.length) {
+            return res.status(400).json({ message: "Một hoặc nhiều sản phẩm không tồn tại" });
+        }
+        const shopIds = [...new Set(orderedProducts.map((p) => p.sellerId.toString()))];
+        if (shopIds.length !== 1) {
+            return res.status(400).json({ message: "Tất cả sản phẩm trong đơn phải cùng một cửa hàng (admin)" });
+        }
+        if (shopIds[0] !== sellerId) {
+            return res.status(400).json({ message: "sellerId không khớp với sản phẩm trong đơn" });
+        }
+        const shopUser = await User.findById(sellerId).select("role").lean();
+        if (!shopUser || shopUser.role !== "admin") {
+            return res.status(400).json({ message: "Đơn chỉ được tạo cho tài khoản admin (cửa hàng)" });
+        }
+
+        const sa = shippingAddress as Record<string, unknown>;
+        const shipProvince =
+            (typeof sa.province === "string" && sa.province.trim())
+            || (typeof sa.city === "string" && sa.city.trim())
+            || "";
+        const shipWard = typeof sa.ward === "string" ? sa.ward.trim() : "";
+
+        if (
+            !sa.fullName
+            || !sa.phoneNumber
+            || !sa.address
+            || !shipProvince
+            || !shipWard
+        ) {
+            return res.status(400).json({
+                message: "shippingAddress cần fullName, phoneNumber, address, ward và province (hoặc city)",
+            });
+        }
+
+        const normalizedShipping: Record<string, string> = {
+            fullName: String(sa.fullName).trim(),
+            phoneNumber: String(sa.phoneNumber).trim(),
+            address: String(sa.address).trim(),
+            province: shipProvince,
+            ward: shipWard,
+        };
+        if (typeof sa.district === "string" && sa.district.trim()) {
+            normalizedShipping.district = sa.district.trim();
+        }
+        if (typeof sa.city === "string" && sa.city.trim()) {
+            normalizedShipping.city = sa.city.trim();
+        }
+
         // Tính phí ship phía server — không nhận từ client
         let shippingFee = 0;
         if (shippingMethod === "economy") {
@@ -301,26 +350,22 @@ export const createOrder = async (req: AuthedRequest, res: Response) => {
         } else if (shippingMethod === "fast") {
             shippingFee = FEE_FAST;
         } else if (shippingMethod === "express") {
-            // Hỏa tốc: cần lấy địa chỉ kho seller và địa chỉ buyer để tính km
             const sellerAddressDoc = await Address.findOne({ userId: sellerId });
-            const sellerWarehouse  = sellerAddressDoc?.addresses.find((a: any) => a.type === "warehouse");
+            const sellerOrigin = pickShopOriginAddress(sellerAddressDoc?.addresses as unknown[]);
 
-            if (!sellerWarehouse) {
-                return res.status(400).json({ message: "Seller chưa cấu hình địa chỉ kho hàng" });
+            if (!sellerOrigin) {
+                return res.status(400).json({ message: "Cửa hàng chưa cấu hình địa chỉ xuất hàng" });
             }
 
-            const seller = sellerWarehouse as any;
+            const seller = sellerOrigin;
             const isSameProvince = seller.province.trim().toLowerCase()
-                === shippingAddress.city?.trim().toLowerCase();
+                === normalizedShipping.province.trim().toLowerCase();
 
             if (!isSameProvince) {
                 return res.status(400).json({ message: "Vận chuyển hỏa tốc chỉ áp dụng trong cùng tỉnh/thành phố" });
             }
 
-            const distanceKm = estimateDistanceKm(
-                seller.district,          seller.ward,
-                shippingAddress.district, shippingAddress.ward,
-            );
+            const distanceKm = estimateDistanceKmWithinProvince(seller.ward, normalizedShipping.ward);
             shippingFee = distanceKm * RATE_PER_KM;
         }
 
@@ -339,7 +384,7 @@ export const createOrder = async (req: AuthedRequest, res: Response) => {
             shippingMethod,
             shippingFee,
             totalPrice,
-            shippingAddress,
+            shippingAddress: normalizedShipping,
 
             notes,
             status: "pending",
@@ -377,6 +422,36 @@ export const getOrders = async (req: AuthedRequest, res: Response) => {
     }
 };
 
+/** Admin: đơn bán của hệ thống; có thể lọc ?sellerId= */
+export const getOrdersForSeller = async (req: AuthedRequest, res: Response) => {
+    try {
+        const userId = req.user?.userId || req.user?.id;
+        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
+
+        let filter: Record<string, unknown>;
+        const q = req.query.sellerId;
+        const sellerIdParam = typeof q === "string" ? q.trim() : "";
+        if (sellerIdParam) {
+            if (!mongoose.Types.ObjectId.isValid(sellerIdParam)) {
+                return res.status(400).json({ message: "sellerId không hợp lệ" });
+            }
+            filter = { sellerId: sellerIdParam };
+        } else {
+            filter = {};
+        }
+
+        const orders = await Order.find(filter)
+            .populate("userId", "name email phoneNumber")
+            .populate("sellerId", "name email")
+            .populate("items.productId")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ message: "Lấy danh sách đơn bán thành công", orders });
+    } catch (error: any) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 export const getOrder = async (req: AuthedRequest, res: Response) => {
     try {
         const userId = req.user?.userId || req.user?.id;
@@ -384,6 +459,33 @@ export const getOrder = async (req: AuthedRequest, res: Response) => {
 
         const { id } = req.params;
         const order = await Order.findOne({ _id: id, userId })
+            .populate("sellerId", "name email")
+            .populate("items.productId");
+
+        if (!order) {
+            return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
+        }
+
+        res.status(200).json({ message: "Lấy đơn hàng thành công", order });
+    } catch (error: any) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/** Admin: chi tiết đơn bán */
+export const getOrderForSeller = async (req: AuthedRequest, res: Response) => {
+    try {
+        const userId = req.user?.userId || req.user?.id;
+        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
+
+        const rawId = req.params.id;
+        const id = typeof rawId === "string" ? rawId : rawId?.[0];
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Id đơn hàng không hợp lệ" });
+        }
+
+        const order = await Order.findById(id)
+            .populate("userId", "name email phoneNumber")
             .populate("sellerId", "name email")
             .populate("items.productId");
 

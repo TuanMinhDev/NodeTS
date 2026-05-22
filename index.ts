@@ -15,7 +15,7 @@ const io = initializeSocketIO(server);
 initializeMessageSocket(io);
 
 app.use(cors({
-  origin: "*", // Cho phép tất cả origins, hoặc thay bằng domain cụ thể như "http://localhost:5173"
+  origin: ["http://localhost:3000", "http://192.168.1.47:3000", "http://localhost:5173", "http://localhost:4000"],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"]
@@ -24,8 +24,8 @@ app.use(cors({
 app.use(express.json());
 
 app.use("/api/v1",router);
-server.listen(3000, () => {
-  console.log("Server is running on port 3000");
+server.listen(3000, "0.0.0.0", () => {
+  console.log("Server is running on http://192.168.1.47:3000");
 });
 
 export default app;

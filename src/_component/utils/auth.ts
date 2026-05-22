@@ -34,15 +34,6 @@ export const isAdmin = (req: AuthedRequest): boolean => {
 };
 
 /**
- * Check if user is seller
- * @param req - Express request object
- * @returns true if user is seller
- */
-export const isSeller = (req: AuthedRequest): boolean => {
-    return req.user?.role === "seller";
-};
-
-/**
  * Check if user is regular user
  * @param req - Express request object
  * @returns true if user is regular user

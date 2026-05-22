@@ -17,6 +17,11 @@ const orderSchema = new mongoose.Schema({
         unique: true,
     },
     items: [{
+        _id: {
+            type: mongoose.Schema.Types.ObjectId,
+            default: () => new mongoose.Types.ObjectId(),
+            required: true,
+        },
         productId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Product",
@@ -55,9 +60,13 @@ const orderSchema = new mongoose.Schema({
         fullName: { type: String, required: true },
         phoneNumber: { type: String, required: true },
         address: { type: String, required: true },
-        city: { type: String, required: true },
-        district: { type: String, required: true },
-        ward: { type: String, required: true },
+        /** Tỉnh / thành phố (mô hình 2 cấp). */
+        province: { type: String, trim: true, required: true },
+        ward: { type: String, trim: true, required: true },
+        /** Deprecated: FE cũ gửi `city` — API vẫn copy sang province khi tạo đơn. */
+        city: { type: String, trim: true },
+        /** Cấp hành chính cũ — optional. */
+        district: { type: String, trim: true },
     },
     status: {
         type: String,

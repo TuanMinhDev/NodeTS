@@ -12,7 +12,8 @@ const addressItemSchema = new mongoose.Schema({
         trim: true,
     },
     province: { type: String, required: true, trim: true },
-    district: { type: String, required: true, trim: true },
+    /** Cấp hành chính cũ (quận/huyện); không bắt buộc với mô hình 2 cấp tỉnh–xã */
+    district: { type: String, trim: true, default: "" },
     ward:     { type: String, required: true, trim: true },
     street:   { type: String, trim: true },
     isDefault: { type: Boolean, default: false },

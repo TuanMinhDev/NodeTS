@@ -8,8 +8,8 @@ import commentRouter from "./comment/commentRouter";
 import favoriteRouter from "./favorite/favoriteRouter";
 import notificationRouter from "./notification/notificationRouter";
 import addressRouter from "./address/addressRouter";
-import followerRouter from "./follower/followerRouter";
 import messageRouter from "./message/messageRouter";
+import aiRouter from "./ai/aiRouter";
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ router.use("/comment", commentRouter);
 router.use("/favorite", favoriteRouter);
 router.use("/notification", notificationRouter);
 router.use("/address", addressRouter);
-router.use("/follower", followerRouter);
 router.use("/message", messageRouter);
+router.use("/ai", aiRouter);
 
 export default router;

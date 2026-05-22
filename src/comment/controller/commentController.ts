@@ -1,22 +1,36 @@
 import { Request, Response } from "express";
-import mongoose from "mongoose";
 import Comment from "../model/commentModel";
-import Product from "../../product/model/productModel";
+import Order from "../../order/model/orderModel";
 import { AuthedRequest } from "../../_component";
+
+function normalizeProductId(productId: unknown): string {
+    const raw = Array.isArray(productId) ? productId[0] : productId;
+    return String(raw ?? "").trim();
+}
+
+/** ObjectId hoặc populated ref { _id } → chuỗi id ổn định */
+function refIdString(ref: unknown): string {
+    if (ref == null) return "";
+    if (typeof ref === "object" && "_id" in (ref as object)) {
+        return String((ref as { _id: unknown })._id);
+    }
+    return String(ref);
+}
 
 export const createComment = async (req: AuthedRequest, res: Response) => {
     try {
         const userId = req.user?.userId || req.user?.id;
         if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-        const { productId, content, rating, images } = req.body;
+        const { productId, orderId, orderItemId, content, rating, img } = req.body;
 
-        if (!productId || !content || !rating) {
+        // Validate required fields
+        if (!productId || !orderId || !content || !rating) {
             return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
         }
 
-        const productIdStr = Array.isArray(productId) ? productId[0] : productId;
-        if (!mongoose.Types.ObjectId.isValid(productIdStr)) {
+        const productIdStr = normalizeProductId(productId);
+        if (!productIdStr) {
             return res.status(400).json({ message: "productId không hợp lệ" });
         }
 
@@ -24,142 +38,182 @@ export const createComment = async (req: AuthedRequest, res: Response) => {
             return res.status(400).json({ message: "Rating phải từ 1 đến 5" });
         }
 
-        const comment = new Comment({
-            productId: productIdStr,
-            userId,
-            content,
-            rating,
-            images: images || [],
+        // Load order and validate ownership
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
+        }
+
+        // Check if order belongs to user
+        if (order.userId.toString() !== userId.toString()) {
+            return res.status(403).json({ message: "Đơn hàng không thuộc về bạn" });
+        }
+
+        // Check if order is delivered
+        if (order.status !== "delivered") {
+            return res.status(400).json({ message: "Chỉ đánh giá sau khi đơn đã giao" });
+        }
+
+        // Find matching item in order
+        const orderItem = order.items.find(item => {
+            const productIdMatch = refIdString(item.productId) === productIdStr;
+            const orderItemIdMatch = !orderItemId || item._id.toString() === orderItemId;
+            return productIdMatch && orderItemIdMatch;
         });
 
-        const savedComment = await comment.save();
-        await savedComment.populate("userId", "name email");
-        
-        res.status(201).json({ message: "Tạo bình luận thành công", comment: savedComment });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
+        if (!orderItem) {
+            return res.status(400).json({ message: "Sản phẩm không có trong đơn hàng" });
+        }
+
+        // Luôn lưu orderItemId từ dòng đơn thật (tránh FE sai + unique index theo dòng hoạt động đúng)
+        const commentData: Record<string, unknown> = {
+            userId,
+            orderId,
+            orderItemId: orderItem._id,
+            productId: productIdStr,
+            content,
+            rating,
+            img: img != null && img !== "" ? String(img).trim() : "",
+        };
+
+        const doc = await Comment.findOneAndUpdate(
+            { productId: productIdStr },
+            {
+                $push: {
+                    comment: commentData,
+                },
+                $setOnInsert: { productId: productIdStr },
+            },
+            { upsert: true, new: true }
+        );
+
+        await doc.populate("comment.userId", "name email");
+        const item = doc.comment[doc.comment.length - 1];
+
+        res.status(201).json({ message: "Tạo bình luận thành công", comment: item });
+    } catch (error: unknown) {
+        const err = error as { code?: number; message?: string };
+        if (err.code === 11000) {
+            return res.status(409).json({
+                message: "Bạn đã đánh giá sản phẩm này trong đơn hàng này rồi.",
+            });
+        }
+        res.status(500).json({ message: err.message ?? "Lỗi máy chủ" });
+    }
+};
+
+export const getReviewableItems = async (req: AuthedRequest, res: Response) => {
+    try {
+        const userId = req.user?.userId || req.user?.id;
+        if (!userId) return res.status(401).json({ message: "Chua xác thuc" });
+
+        const { orderId } = req.params;
+        if (!orderId) {
+            return res.status(400).json({ message: "Thieu orderId" });
+        }
+
+        // Load order and validate ownership
+        const order = await Order.findById(orderId).populate("items.productId");
+        if (!order) {
+            return res.status(404).json({ message: "Không tìmtha don hàng" });
+        }
+
+        // Check if order belongs to user
+        if (order.userId.toString() !== userId.toString()) {
+            return res.status(403).json({ message: "Don hàng không thuoc ve ban" });
+        }
+
+        // Check if order is delivered
+        if (order.status !== "delivered") {
+            return res.status(400).json({ message: "Chi xem các món có the danh gia sau khi don da giao" });
+        }
+
+        // Mỗi sản phẩm một document Comment — phải lấy hết doc có comment thuộc đơn này
+        const commentDocs = await Comment.find({
+            comment: { $elemMatch: { orderId, userId } },
+        }).lean();
+
+        const commentedOrderItemIds = new Set<string>();
+        const reviewedKeys = new Set<string>(); // userId|orderId|productId khi không có orderItemId (legacy)
+        for (const doc of commentDocs) {
+            for (const c of doc.comment ?? []) {
+                if (c.orderId?.toString() !== orderId || c.userId?.toString() !== userId.toString()) {
+                    continue;
+                }
+                if (c.orderItemId) {
+                    commentedOrderItemIds.add(c.orderItemId.toString());
+                } else {
+                    reviewedKeys.add(`${c.userId}-${orderId}-${refIdString(c.productId)}`);
+                }
+            }
+        }
+
+        // Filter items that haven't been reviewed yet
+        const reviewableItems = order.items
+            .filter(item => {
+                if (commentedOrderItemIds.has(item._id.toString())) return false;
+                const legacyKey = `${userId}-${orderId}-${refIdString(item.productId)}`;
+                if (reviewedKeys.has(legacyKey)) return false;
+                return true;
+            })
+            .map(item => ({
+                orderItemId: item._id,
+                productId: item.productId,
+                variant: item.variant,
+                quantity: item.quantity,
+                price: item.price
+            }));
+
+        res.status(200).json({
+            message: "Lay danh sách món có the danh gia thành công",
+            orderId,
+            reviewableItems
+        });
+    } catch (error: unknown) {
+        const err = error as { message?: string };
+        res.status(500).json({ message: err.message ?? "Lỗi máy chủ" });
     }
 };
 
 export const getCommentsByProduct = async (req: Request, res: Response) => {
     try {
         const { productId } = req.params;
-        const productIdStr = Array.isArray(productId) ? productId[0] : productId;
-
-        if (!mongoose.Types.ObjectId.isValid(productIdStr)) {
-            return res.status(400).json({ message: "productId không hợp lệ" });
+        const productIdStr = normalizeProductId(productId);
+        if (!productIdStr) {
+            return res.status(400).json({ message: "productId không xác lêp" });
         }
 
-        const comments = await Comment.find({ productId: productIdStr })
-            .populate("userId", "name email")
-            .populate("replies.userId", "name email")
-            .sort({ createdAt: -1 });
+        const doc = await Comment.findOne({ productId: productIdStr }).populate(
+            "comment.userId",
+            "name email"
+        );
 
-        res.status(200).json({ message: "Lấy danh sách bình luận thành công", comments });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
+        const comment = doc
+            ? [...doc.comment].sort(
+                  (a, b) =>
+                      new Date(b.createdAt as Date).getTime() -
+                      new Date(a.createdAt as Date).getTime()
+              ).map(item => ({
+                  _id: item._id,
+                  userId: item.userId,
+                  rating: item.rating,
+                  content: item.content,
+                  img: item.img,
+                  createdAt: item.createdAt,
+                  updatedAt: item.updatedAt,
+                  // Include order context for potential UI use
+                  orderId: item.orderId,
+                  orderItemId: item.orderItemId
+              }))
+            : [];
 
-export const updateComment = async (req: AuthedRequest, res: Response) => {
-    try {
-        const userId = req.user?.userId || req.user?.id;
-        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
-
-        const { id } = req.params;
-        const { content, rating, images } = req.body;
-
-        const comment = await Comment.findOne({ _id: id, userId });
-        if (!comment) {
-            return res.status(404).json({ message: "Không tìm thấy bình luận hoặc bạn không có quyền sửa" });
-        }
-
-        if (content) comment.content = content;
-        if (rating) comment.rating = rating;
-        if (images) comment.images = images;
-
-        const updatedComment = await comment.save();
-        await updatedComment.populate("userId", "name email");
-
-        res.status(200).json({ message: "Cập nhật bình luận thành công", comment: updatedComment });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-export const deleteComment = async (req: AuthedRequest, res: Response) => {
-    try {
-        const userId = req.user?.userId || req.user?.id;
-        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
-
-        const { id } = req.params;
-        const comment = await Comment.findOne({ _id: id, userId });
-
-        if (!comment) {
-            return res.status(404).json({ message: "Không tìm thấy bình luận hoặc bạn không có quyền xóa" });
-        }
-
-        await Comment.findByIdAndDelete(id);
-        res.status(200).json({ message: "Xóa bình luận thành công" });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-export const likeComment = async (req: AuthedRequest, res: Response) => {
-    try {
-        const userId = req.user?.userId || req.user?.id;
-        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
-
-        const { id } = req.params;
-        const comment = await Comment.findById(id);
-
-        if (!comment) {
-            return res.status(404).json({ message: "Không tìm thấy bình luận" });
-        }
-
-        const isLiked = comment.likes.includes(userId);
-        if (isLiked) {
-            comment.likes = comment.likes.filter((id: string) => id !== userId);
-        } else {
-            comment.likes.push(userId);
-        }
-
-        await comment.save();
-        res.status(200).json({ message: isLiked ? "Bỏ thích thành công" : "Thích thành công", likes: comment.likes.length });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-export const replyToComment = async (req: AuthedRequest, res: Response) => {
-    try {
-        const userId = req.user?.userId || req.user?.id;
-        if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
-
-        const { id } = req.params;
-        const { content } = req.body;
-
-        if (!content) {
-            return res.status(400).json({ message: "Nội dung trả lời là bắt buộc" });
-        }
-
-        const comment = await Comment.findById(id);
-        if (!comment) {
-            return res.status(404).json({ message: "Không tìm thấy bình luận" });
-        }
-
-        comment.replies.push({
-            userId,
-            content,
-            createdAt: new Date(),
+        res.status(200).json({
+            message: "Lây danh sách bình luân thành công",
+            productId: productIdStr,
+            comment,
         });
-
-        await comment.save();
-        await comment.populate("replies.userId", "name email");
-
-        res.status(201).json({ message: "Trả lời bình luận thành công", comment });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
+    } catch (error: unknown) {
+        const err = error as { message?: string };
+        res.status(500).json({ message: err.message ?? "Lỗi máy chủ" });
     }
 };

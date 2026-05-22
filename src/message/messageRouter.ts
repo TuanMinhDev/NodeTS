@@ -15,15 +15,15 @@ import {
 const messageRouter = express.Router();
 
 // Conversation management
-messageRouter.post("/conversation", checkPermission(["admin", "user", "seller"]), createConversation);
-messageRouter.get("/conversations", checkPermission(["admin", "user", "seller"]), getConversations);
-messageRouter.get("/conversation/:id", checkPermission(["admin", "user", "seller"]), getConversationById);
+messageRouter.post("/conversation", checkPermission(["admin", "user"]), createConversation);
+messageRouter.get("/conversations", checkPermission(["admin", "user"]), getConversations);
+messageRouter.get("/conversation/:id", checkPermission(["admin", "user"]), getConversationById);
 
 // Message operations
-messageRouter.post("/send", checkPermission(["admin", "user", "seller"]), uploadMessageImage, uploadMessageImageToCloudinary, sendMessage);
-messageRouter.get("/messages/:conversationId", checkPermission(["admin", "user", "seller"]), getMessages);
-messageRouter.put("/read/:conversationId", checkPermission(["admin", "user", "seller"]), markAsRead);
-messageRouter.delete("/message/:id", checkPermission(["admin", "user", "seller"]), deleteMessage);
-messageRouter.put("/message/:id", checkPermission(["admin", "user", "seller"]), editMessage);
+messageRouter.post("/send", checkPermission(["admin", "user"]), uploadMessageImage, uploadMessageImageToCloudinary, sendMessage);
+messageRouter.get("/messages/:conversationId", checkPermission(["admin", "user"]), getMessages);
+messageRouter.put("/read/:conversationId", checkPermission(["admin", "user"]), markAsRead);
+messageRouter.delete("/message/:id", checkPermission(["admin", "user"]), deleteMessage);
+messageRouter.put("/message/:id", checkPermission(["admin", "user"]), editMessage);
 
 export default messageRouter;

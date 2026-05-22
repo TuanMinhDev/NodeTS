@@ -1,21 +1,20 @@
 import mongoose from "mongoose";
 
-const favoriteSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
+const favoriteSchema = new mongoose.Schema(
+    {
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+            unique: true,
+        },
+        products: {
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+            default: [],
+        },
     },
-    productId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        required: true,
-    },
-},
-    { timestamps: true });
-
-// Create compound index to ensure a user can only favorite a product once
-favoriteSchema.index({ userId: 1, productId: 1 }, { unique: true });
+    { timestamps: true }
+);
 
 const Favorite = mongoose.model("Favorite", favoriteSchema);
 
