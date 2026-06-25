@@ -2,9 +2,36 @@ import { Request, Response } from "express";
 import userModel from "../model/userModel";
 import authModel from "../model/authModel";
 import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
+import {
+    ACCESS_TOKEN_MAX_AGE_SEC,
+    clearAuthCookies,
+    createRefreshTokenId,
+    getAccessTokenFromRequest,
+    getRefreshTokenFromRequest,
+    setAuthCookies,
+    signAccessToken,
+    signRefreshToken,
+    tryVerifyAccessToken,
+    verifyRefreshToken,
+} from "../token.util";
 dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET;
+
+const invalidateRefreshSession = async (userId: string) => {
+    await authModel.updateOne({ userId }, { $set: { refreshTokenId: null } });
+};
+
+const issueTokenPair = async (userId: string, role: string) => {
+    if (!JWT_SECRET) throw new Error("Lỗi hệ thống");
+
+    const refreshTokenId = createRefreshTokenId();
+    await authModel.updateOne({ userId }, { $set: { refreshTokenId } });
+
+    const accessToken = signAccessToken(userId, role, JWT_SECRET);
+    const refreshToken = signRefreshToken(userId, role, refreshTokenId, JWT_SECRET);
+
+    return { accessToken, refreshToken };
+};
 
 export const register = async (req: Request, res: Response) => {
     try {
@@ -33,7 +60,6 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
     try {
         const { identifier, password } = req.body;
-        
 
         if (!identifier || !password) {
             return res.status(400).json({ message: "Chưa nhập đầy đủ dữ liệu" });
@@ -59,17 +85,15 @@ export const login = async (req: Request, res: Response) => {
             return res.status(500).json({ message: "Lỗi hệ thống" });
         }
 
-        const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
-
-        res.setHeader(
-            "Set-Cookie",
-            `access_token=${token}; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax`
-        );
+        const { accessToken, refreshToken } = await issueTokenPair(user._id.toString(), user.role);
+        setAuthCookies(res, accessToken, refreshToken);
 
         return res.status(200).json({
             message: "Đăng nhập thành công",
-            token: token,
-            
+            token: accessToken,
+            accessToken,
+            refreshToken,
+            expiresIn: ACCESS_TOKEN_MAX_AGE_SEC,
         });
     } catch (error) {
         return res.status(500).json({ message: "Lỗi server", error: error });
@@ -78,12 +102,38 @@ export const login = async (req: Request, res: Response) => {
 
 export const logout = async (req: Request, res: Response) => {
     try {
-        res.clearCookie("access_token");
+        if (!JWT_SECRET) {
+            return res.status(500).json({ message: "Lỗi hệ thống" });
+        }
+
+        let userId: string | null = null;
+
+        const accessToken = getAccessTokenFromRequest(req);
+        if (accessToken) {
+            const decoded = tryVerifyAccessToken(accessToken, JWT_SECRET);
+            if (decoded?.userId) userId = decoded.userId;
+        }
+
+        const refreshToken = getRefreshTokenFromRequest(req);
+        if (!userId && refreshToken) {
+            try {
+                const decoded = verifyRefreshToken(refreshToken, JWT_SECRET);
+                userId = decoded.userId;
+            } catch {
+                // refresh hết hạn hoặc không hợp lệ — vẫn xóa cookie/local phía client
+            }
+        }
+
+        if (userId) {
+            await invalidateRefreshSession(userId);
+        }
+
+        clearAuthCookies(res);
         return res.status(200).json({ message: "Đăng xuất thành công" });
     } catch (error) {
         return res.status(500).json({ message: "Lỗi server", error: error });
     }
-}
+};
 
 export const changePassword = async (req: Request, res: Response) => {
     try {
@@ -112,59 +162,61 @@ export const changePassword = async (req: Request, res: Response) => {
         }
 
         auth.password = newPassword;
+        auth.refreshTokenId = null;
         await auth.save();
 
-        return res.status(200).json({ message: "Đổi mật khẩu thành công" });
+        clearAuthCookies(res);
+        return res.status(200).json({
+            message: "Đổi mật khẩu thành công. Vui lòng đăng nhập lại.",
+        });
     } catch (error) {
         return res.status(500).json({ message: "Lỗi server", error: error });
     }
-}
+};
 
 export const refreshToken = async (req: Request, res: Response) => {
     try {
-        const { refreshToken } = req.body;
-        if (!refreshToken) {
-            return res.status(400).json({ message: "Chưa nhập refresh token" });
+        const incomingRefreshToken = getRefreshTokenFromRequest(req);
+        if (!incomingRefreshToken) {
+            return res.status(400).json({ message: "Thiếu refresh token" });
         }
 
         if (!JWT_SECRET) {
             return res.status(500).json({ message: "Lỗi hệ thống" });
         }
 
-        // Verify refresh token
-        jwt.verify(refreshToken, JWT_SECRET, (err: any, decoded: any) => {
-            if (err || !decoded) {
-                return res.status(401).json({ message: "Refresh token không hợp lệ hoặc đã hết hạn" });
-            }
+        let decoded;
+        try {
+            decoded = verifyRefreshToken(incomingRefreshToken, JWT_SECRET);
+        } catch {
+            return res.status(401).json({ message: "Refresh token không hợp lệ hoặc đã hết hạn" });
+        }
 
-            const payload = decoded as { userId: string, role: string };
-            
-            // Tạo access token mới
-            const newAccessToken = jwt.sign(
-                { userId: payload.userId, role: payload.role },
-                JWT_SECRET,
-                { expiresIn: "1h" }
-            );
+        const auth = await authModel.findOne({ userId: decoded.userId });
+        if (!auth || !auth.refreshTokenId || auth.refreshTokenId !== decoded.jti) {
+            return res.status(401).json({ message: "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại" });
+        }
 
-            // Có thể tạo cả refresh token mới nếu muốn (Refresh Token Rotation)
-            const newRefreshToken = jwt.sign(
-                { userId: payload.userId, role: payload.role },
-                JWT_SECRET,
-                { expiresIn: "7d" }
-            );
+        const user = await userModel.findById(decoded.userId).select("role");
+        if (!user) {
+            return res.status(401).json({ message: "Tài khoản không tồn tại" });
+        }
 
-            res.setHeader(
-                "Set-Cookie",
-                `access_token=${newAccessToken}; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax`
-            );
+        const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(
+            user._id.toString(),
+            user.role,
+        );
 
-            return res.status(200).json({
-                message: "Lấy token mới thành công",
-                accessToken: newAccessToken,
-                refreshToken: newRefreshToken
-            });
+        setAuthCookies(res, accessToken, newRefreshToken);
+
+        return res.status(200).json({
+            message: "Lấy token mới thành công",
+            token: accessToken,
+            accessToken,
+            refreshToken: newRefreshToken,
+            expiresIn: ACCESS_TOKEN_MAX_AGE_SEC,
         });
     } catch (error) {
         return res.status(500).json({ message: "Lỗi server", error: error });
     }
-}
+};

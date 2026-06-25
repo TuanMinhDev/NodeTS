@@ -4,6 +4,51 @@ import Cart from "../model/cartModel";
 import Product from "../../product/model/productModel";
 import { AuthedRequest } from "../../_component";
 
+type OrderLineForCart = {
+  productId: string;
+  variant: { color: string; size: string };
+};
+
+/** Xóa dòng giỏ sau đặt hàng — chỉ khi FE gửi cartItemIds (checkout từ giỏ). Mua ngay: không gửi field này. */
+export const removeCartItemsAfterOrder = async (
+  userId: string,
+  cartItemIds: string[],
+  orderItems: OrderLineForCart[],
+): Promise<void> => {
+  if (!cartItemIds.length) return;
+
+  const cart = await Cart.findOne({ userId });
+  if (!cart) return;
+
+  const idsToRemove = new Set<string>();
+  for (const cartItemId of cartItemIds) {
+    if (!mongoose.Types.ObjectId.isValid(cartItemId)) continue;
+
+    const cartItem = cart.items.find((i: { _id: mongoose.Types.ObjectId }) => i._id.toString() === cartItemId);
+    const variant = cartItem?.variant;
+    if (!cartItem || !variant) continue;
+
+    const matchesOrder = orderItems.some(
+      (oi) =>
+        cartItem.productId.toString() === String(oi.productId) &&
+        variant.color === oi.variant.color &&
+        variant.size === oi.variant.size,
+    );
+    if (matchesOrder) idsToRemove.add(cartItemId);
+  }
+
+  if (!idsToRemove.size) return;
+
+  cart.items = cart.items.filter(
+    (item: { _id: mongoose.Types.ObjectId }) => !idsToRemove.has(item._id.toString()),
+  ) as typeof cart.items;
+  cart.totalPrice = cart.items.reduce(
+    (sum: number, item: { price: number; quantity: number }) => sum + item.price * item.quantity,
+    0,
+  );
+  await cart.save();
+};
+
 export const addToCart = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.userId || req.user?.id;

@@ -8,37 +8,40 @@ export const initializeMessageSocket = (socketIO: SocketIOServer) => {
     io = socketIO;
 };
 
+const buildMessagePayload = (message: {
+    _id: unknown;
+    conversationId: unknown;
+    senderId: unknown;
+    content: string;
+    messageType: string;
+    imageUrl?: string | null;
+    videoUrl?: string | null;
+    replyTo?: unknown;
+    createdAt?: Date;
+}) => ({
+    _id: message._id,
+    conversationId: message.conversationId,
+    senderId: message.senderId,
+    content: message.content,
+    messageType: message.messageType,
+    imageUrl: message.imageUrl ?? null,
+    videoUrl: message.videoUrl ?? null,
+    replyTo: message.replyTo ?? null,
+    createdAt: message.createdAt,
+    sender: message.senderId,
+});
+
 export const sendMessage = async (conversationId: string, message: any, participants: string[]) => {
     try {
         if (!io) return;
 
-        // Send message to all participants in the conversation
+        const payload = buildMessagePayload(message);
+
         participants.forEach((participantId: string) => {
-            io.to(`user_${participantId}`).emit("newMessage", {
-                _id: message._id,
-                conversationId: message.conversationId,
-                senderId: message.senderId,
-                content: message.content,
-                messageType: message.messageType,
-                imageUrl: message.imageUrl,
-                replyTo: message.replyTo,
-                createdAt: message.createdAt,
-                sender: message.senderId,
-            });
+            io.to(`user_${participantId}`).emit("newMessage", payload);
         });
 
-        // Also send to conversation room for real-time updates
-        io.to(`conversation_${conversationId}`).emit("newMessage", {
-            _id: message._id,
-            conversationId: message.conversationId,
-            senderId: message.senderId,
-            content: message.content,
-            messageType: message.messageType,
-            imageUrl: message.imageUrl,
-            replyTo: message.replyTo,
-            createdAt: message.createdAt,
-            sender: message.senderId,
-        });
+        io.to(`conversation_${conversationId}`).emit("newMessage", payload);
 
         console.log(`Message sent to conversation ${conversationId} with ${participants.length} participants`);
     } catch (error) {
@@ -48,10 +51,10 @@ export const sendMessage = async (conversationId: string, message: any, particip
 
 export const markMessagesAsRead = async (conversationId: string, userId: string, messageIds?: string[]) => {
     try {
-        const filter: any = {
+        const filter: Record<string, unknown> = {
             conversationId,
-            senderId: { $ne: userId }, // Only mark messages sent by others
-            "isRead.userId": { $ne: userId } // Not already read by this user
+            senderId: { $ne: userId },
+            "isRead.userId": { $ne: userId },
         };
 
         if (messageIds && messageIds.length > 0) {
@@ -69,7 +72,6 @@ export const markMessagesAsRead = async (conversationId: string, userId: string,
 
         await Message.updateMany(filter, update);
 
-        // Notify sender that message was read
         if (io) {
             io.to(`user_${userId}`).emit("messagesRead", {
                 conversationId,
@@ -88,9 +90,8 @@ export const notifyTyping = (conversationId: string, userId: string, isTyping: b
     try {
         if (!io) return;
 
-        // Get conversation participants
         Conversation.findById(conversationId)
-            .then(conversation => {
+            .then((conversation) => {
                 if (conversation) {
                     conversation.participants.forEach((participantId) => {
                         const participantIdStr = participantId.toString();
@@ -104,7 +105,7 @@ export const notifyTyping = (conversationId: string, userId: string, isTyping: b
                     });
                 }
             })
-            .catch(error => console.error("Error notifying typing:", error));
+            .catch((error) => console.error("Error notifying typing:", error));
     } catch (error) {
         console.error("Error notifying typing:", error);
     }

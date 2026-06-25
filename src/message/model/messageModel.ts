@@ -18,10 +18,14 @@ const messageSchema = new mongoose.Schema({
     },
     messageType: {
         type: String,
-        enum: ["text", "image"],
+        enum: ["text", "image", "video"],
         default: "text",
     },
     imageUrl: {
+        type: String,
+        trim: true,
+    },
+    videoUrl: {
         type: String,
         trim: true,
     },
@@ -64,7 +68,6 @@ const messageSchema = new mongoose.Schema({
 },
     { timestamps: true });
 
-// Create indexes for efficient queries
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 messageSchema.index({ senderId: 1 });
 messageSchema.index({ "isRead.userId": 1 });

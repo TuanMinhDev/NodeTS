@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 
 const conversationSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
     participants: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -17,14 +22,6 @@ const conversationSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
-    groupName: {
-        type: String,
-        trim: true,
-    },
-    groupImage: {
-        type: String,
-        trim: true,
-    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -37,8 +34,9 @@ const conversationSchema = new mongoose.Schema({
 },
     { timestamps: true });
 
-// Create index for finding conversations by participants
+conversationSchema.index({ userId: 1 }, { unique: true, partialFilterExpression: { isActive: true } });
 conversationSchema.index({ participants: 1 });
+conversationSchema.index({ lastMessageAt: -1 });
 
 const Conversation = mongoose.model("Conversation", conversationSchema);
 

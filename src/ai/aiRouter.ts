@@ -4,6 +4,7 @@ import {
     getRecommendations,
     getPopularProducts,
     healthCheck,
+    chatWithAi,
 } from "./controller/aiController";
 
 const aiRouter = express.Router();
@@ -13,6 +14,9 @@ aiRouter.get("/recommend", checkPermission(["admin", "user"]), getRecommendation
 
 // Popular Products (không cần auth)
 aiRouter.get("/recommend/popular", getPopularProducts);
+
+// AI Chat (không cần auth)
+aiRouter.post("/chat", chatWithAi);
 
 // Health check
 aiRouter.get("/health", healthCheck);

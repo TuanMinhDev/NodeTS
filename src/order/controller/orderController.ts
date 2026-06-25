@@ -6,7 +6,9 @@ import Address from "../../address/model/addressModel";
 import { pickShopOriginAddress } from "../../address/pickShopOriginAddress";
 import User from "../../auth_user/model/userModel";
 import { notifyOrderCreated, notifyOrderStatusUpdated } from "../../notification/service/notificationService";
+import { removeCartItemsAfterOrder } from "../../cart/controller/cartController";
 import { AuthedRequest } from "../../_component";
+import { generateOrderCode, isDuplicateOrderCodeError } from "../orderCode.util";
 
 // ─── Shipping fee config ────────────────────────────────────────────────────
 
@@ -262,7 +264,7 @@ export const createOrder = async (req: AuthedRequest, res: Response) => {
         const userId = req.user?.userId || req.user?.id;
         if (!userId) return res.status(401).json({ message: "Chưa xác thực" });
 
-        const { sellerId, items, shippingAddress, shippingMethod, notes } = req.body;
+        const { sellerId, items, shippingAddress, shippingMethod, notes, cartItemIds } = req.body;
         
         if (!sellerId || !items || !shippingAddress || !shippingMethod) {
              return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
@@ -373,24 +375,43 @@ export const createOrder = async (req: AuthedRequest, res: Response) => {
         const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         const totalPrice = itemsTotal + shippingFee;
 
-        // Generate unique order code
-        const orderCode = `ORD${Date.now()}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+        let savedOrder: InstanceType<typeof Order> | null = null;
+        let orderCode = "";
 
-        const newOrder = new Order({
-            userId,
-            sellerId,
-            orderCode,
-            items,
-            shippingMethod,
-            shippingFee,
-            totalPrice,
-            shippingAddress: normalizedShipping,
+        for (let attempt = 0; attempt < 5; attempt++) {
+            orderCode = await generateOrderCode();
+            try {
+                const newOrder = new Order({
+                    userId,
+                    sellerId,
+                    orderCode,
+                    items,
+                    shippingMethod,
+                    shippingFee,
+                    totalPrice,
+                    shippingAddress: normalizedShipping,
+                    notes,
+                    status: "pending",
+                });
+                savedOrder = await newOrder.save();
+                break;
+            } catch (saveError) {
+                if (isDuplicateOrderCodeError(saveError) && attempt < 4) continue;
+                throw saveError;
+            }
+        }
 
-            notes,
-            status: "pending",
-        });
+        if (!savedOrder) {
+            return res.status(500).json({ message: "Không thể tạo mã đơn hàng, vui lòng thử lại" });
+        }
 
-        const savedOrder = await newOrder.save();
+        if (Array.isArray(cartItemIds) && cartItemIds.length > 0) {
+            try {
+                await removeCartItemsAfterOrder(userId, cartItemIds, items);
+            } catch (cartError) {
+                console.error("Error removing cart items after order:", cartError);
+            }
+        }
 
         // Send notifications to seller and buyer
         try {

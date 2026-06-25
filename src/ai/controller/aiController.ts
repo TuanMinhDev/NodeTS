@@ -45,3 +45,29 @@ export const healthCheck = async (req: AuthedRequest, res: Response) => {
         return res.status(200).json({ nodeTS: "ok", pythonAI: "offline" });
     }
 };
+
+// ─── AI Chat ────────────────────────────────────────────────
+
+export const chatWithAi = async (req: AuthedRequest, res: Response) => {
+    try {
+        const { message } = req.body;
+        if (!message || !message.trim()) {
+            return res.status(400).json({ message: "Tin nhắn không được để trống" });
+        }
+
+        const response = await fetch(`${PYTHON_AI_URL}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message.trim() }),
+        });
+        const data = await response.json();
+        return res.status(200).json(data);
+    } catch (error: any) {
+        console.error("AI Chat error:", error.message);
+        return res.status(500).json({
+            reply: "Xin lỗi, mình gặp lỗi khi kết nối AI. Bạn thử lại nhé! 🙏",
+            products: [],
+            error: error.message,
+        });
+    }
+};

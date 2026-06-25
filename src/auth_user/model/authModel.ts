@@ -15,6 +15,11 @@ const authSchema = new mongoose.Schema({
         ref: "User",
         required: true,
     },
+    /** Id phiên refresh hiện tại — null sau logout / đổi mật khẩu */
+    refreshTokenId: {
+        type: String,
+        default: null,
+    },
 });
 
 const Auth = mongoose.model("Auth", authSchema);
