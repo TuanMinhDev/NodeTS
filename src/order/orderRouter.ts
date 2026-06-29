@@ -7,12 +7,11 @@ import {
     getOrder,
     getOrderForSeller,
     updateStatusOrder,
-    getShippingOptions,
 } from "./controller/orderController";
 
 const orderRouter = express.Router();
 
-orderRouter.get("/shipping-options", checkPermission(["admin", "user"]), getShippingOptions);
+
 orderRouter.post("/create", checkPermission(["admin", "user"]), createOrder);
 orderRouter.get("/", checkPermission(["admin", "user"]), getOrders);
 orderRouter.get("/seller", checkPermission(["admin"]), getOrdersForSeller);

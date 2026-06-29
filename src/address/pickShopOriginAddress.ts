@@ -1,30 +1,67 @@
-/** Địa chỉ hành chính mới (2 cấp): tỉnh/TP + xã/phường để làm điểm xuất hàng. */
-export type ShopOriginCoords = { province: string; ward: string };
+/**
+ * Chọn địa chỉ xuất hàng (pickup) cho seller/admin.
+ *
+ * Ưu tiên: warehouse → default → địa chỉ đầu tiên.
+ * Trả đầy đủ thông tin cho GHTK: fullName, phoneNumber, address(street),
+ * province, district, ward.
+ */
+
+export interface ShopOriginAddress {
+  fullName: string;
+  phoneNumber: string;
+  address: string;     // street / số nhà
+  province: string;
+  district: string;
+  ward: string;
+}
 
 type AddrRow = {
-    type?: string;
-    isDefault?: boolean;
-    province?: string;
-    district?: string;
-    ward?: string;
+  type?: string;
+  isDefault?: boolean;
+  fullName?: string;
+  phoneNumber?: string;
+  province?: string;
+  district?: string;
+  ward?: string;
+  street?: string;
 };
 
-/** Điểm xuất hàng cho admin: ưu tiên warehouse (legacy), rồi default, rồi địa chỉ đầu tiên. */
-export function pickShopOriginAddress(addresses: unknown[] | undefined): ShopOriginCoords | null {
-    const list = (addresses ?? []) as AddrRow[];
-    if (list.length === 0) return null;
+function toOrigin(a: AddrRow): ShopOriginAddress | null {
+  const province = a.province?.trim();
+  const ward = a.ward?.trim();
+  if (!province || !ward) return null;
 
-    const wh = list.find((a) => a.type === "warehouse");
-    if (wh?.province?.trim() && wh?.ward?.trim()) {
-        return { province: wh.province.trim(), ward: wh.ward.trim() };
-    }
-    const def = list.find((a) => a.isDefault);
-    if (def?.province?.trim() && def?.ward?.trim()) {
-        return { province: def.province.trim(), ward: def.ward.trim() };
-    }
-    const first = list[0];
-    if (first?.province?.trim() && first?.ward?.trim()) {
-        return { province: first.province.trim(), ward: first.ward.trim() };
-    }
-    return null;
+  return {
+    fullName: a.fullName?.trim() || "Shop",
+    phoneNumber: a.phoneNumber?.trim() || "",
+    address: a.street?.trim() || "",
+    province,
+    district: a.district?.trim() || ward, // fallback district = ward nếu không có
+    ward,
+  };
+}
+
+/** Điểm xuất hàng cho admin: ưu tiên warehouse → default → đầu tiên. */
+export function pickShopOriginAddress(
+  addresses: unknown[] | undefined,
+): ShopOriginAddress | null {
+  const list = (addresses ?? []) as AddrRow[];
+  if (list.length === 0) return null;
+
+  // 1. warehouse
+  const wh = list.find((a) => a.type === "warehouse");
+  if (wh) {
+    const origin = toOrigin(wh);
+    if (origin) return origin;
+  }
+
+  // 2. default
+  const def = list.find((a) => a.isDefault);
+  if (def) {
+    const origin = toOrigin(def);
+    if (origin) return origin;
+  }
+
+  // 3. first
+  return toOrigin(list[0]);
 }

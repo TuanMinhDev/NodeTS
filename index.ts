@@ -15,7 +15,7 @@ const io = initializeSocketIO(server);
 initializeMessageSocket(io);
 
 app.use(cors({
-  origin: ["http://localhost:3000", "http://192.168.1.47:3000", "http://localhost:5173", "http://localhost:4000"],
+  origin: ["http://localhost:3000", "http://172.20.10.2:3000", "http://localhost:5173", "http://localhost:4000"],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"]
@@ -25,7 +25,7 @@ app.use(express.json());
 
 app.use("/api/v1",router);
 server.listen(3000, "0.0.0.0", () => {
-  console.log("Server is running on http://192.168.1.47:3000");
+  console.log("Server is running on http://172.20.10.2:3000");
 });
 
 export default app;

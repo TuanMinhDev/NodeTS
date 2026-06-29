@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import Cart from "../model/cartModel";
+import CartInteraction from "../model/cartInteractionModel";
 import Product from "../../product/model/productModel";
 import { AuthedRequest } from "../../_component";
 
@@ -117,6 +118,19 @@ export const addToCart = async (req: AuthedRequest, res: Response) => {
         status: "active",
       });
 
+      // Ghi cart_interactions cho PythonAI (trọng số hành vi add_to_cart = 5)
+      try {
+        const cartInteractions = processedItems.map((item) => ({
+          userId: new mongoose.Types.ObjectId(userId),
+          productId: new mongoose.Types.ObjectId(item.productId),
+          addedAt: new Date(),
+        }));
+        await CartInteraction.insertMany(cartInteractions, { ordered: false });
+      } catch (e) {
+        // Không block response nếu tracking lỗi
+        console.error("CartInteraction tracking error:", e);
+      }
+
       return res.status(201).json({ message: "Tạo giỏ hàng thành công", cart });
     }
 
@@ -174,6 +188,19 @@ export const addToCart = async (req: AuthedRequest, res: Response) => {
     // Recalculate total price
     cart.totalPrice = cart.items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
     await cart.save();
+
+    // Ghi cart_interactions cho PythonAI (trọng số hành vi add_to_cart = 5)
+    try {
+      const cartInteractions = items.map((item) => ({
+        userId: new mongoose.Types.ObjectId(userId),
+        productId: new mongoose.Types.ObjectId(item.productId),
+        addedAt: new Date(),
+      }));
+      await CartInteraction.insertMany(cartInteractions, { ordered: false });
+    } catch (e) {
+      // Không block response nếu tracking lỗi
+      console.error("CartInteraction tracking error:", e);
+    }
 
     return res.status(200).json({ message: "Thêm sản phẩm vào giỏ hàng thành công", cart });
   } catch (error: any) {

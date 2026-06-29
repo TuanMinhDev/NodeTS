@@ -43,8 +43,8 @@ const orderSchema = new mongoose.Schema({
     }],
     shippingMethod: {
         type: String,
-        enum: ["economy", "fast", "express"],
-        required: true,
+        enum: ["economy", "fast", "express", "ghtk", "pickup"],
+        default: "ghtk",
     },
     shippingFee: {
         type: Number,
@@ -72,6 +72,11 @@ const orderSchema = new mongoose.Schema({
         type: String,
         enum: ["pending", "shipping", "delivered", "cancelled"],
         default: "pending",
+    },
+    /** Trạng thái vận chuyển chi tiết từ GHTK (pending, in_transit, delivered, ...) */
+    shippingStatus: {
+        type: String,
+        default: null,
     },
     notes: {
         type: String,

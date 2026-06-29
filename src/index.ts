@@ -10,6 +10,7 @@ import notificationRouter from "./notification/notificationRouter";
 import addressRouter from "./address/addressRouter";
 import messageRouter from "./message/messageRouter";
 import aiRouter from "./ai/aiRouter";
+import shippingRouter from "./shipping/shippingRouter";
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use("/notification", notificationRouter);
 router.use("/address", addressRouter);
 router.use("/message", messageRouter);
 router.use("/ai", aiRouter);
+router.use("/shipping", shippingRouter);
 
 export default router;
